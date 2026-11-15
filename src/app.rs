@@ -322,7 +322,7 @@ impl App {
 
     fn poll(&mut self, ctx: &egui::Context, now: f64) {
         let live = matches!(self.view, View::Dashboard | View::Monitor);
-        if live && now - self.polled_at > 2.0 {
+        if live && now - self.polled_at > 1.0 {
             self.polled_at = now;
             self.stats = engine::sample();
             self.cpu_hist.push(self.stats.cpu as f32);

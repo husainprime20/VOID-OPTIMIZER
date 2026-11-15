@@ -40,8 +40,11 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1440.0, 940.0])
-            .with_min_inner_size([1100.0, 700.0])
+            .with_inner_size([1360.0, 860.0])
+            .with_min_inner_size([1040.0, 640.0])
+            // opens maximised: the deck is laid out to breathe, and it can never
+            // be clipped by a 1366x768 laptop panel
+            .with_maximized(true)
             .with_title("VOID — Competitive Optimizer"),
         vsync: true,
         multisampling: 0,
