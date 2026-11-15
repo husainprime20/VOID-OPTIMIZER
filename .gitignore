@@ -5,3 +5,6 @@ data/
 *.log
 .DS_Store
 __pycache__/
+
+# rendered by .github/workflows/preview.yml, published from the void-preview branch
+docs/shots/

@@ -41,14 +41,14 @@ A native desktop app — one window, drawn on the GPU. Engine in-process, every 
 
 ## Screenshots
 
-Rendered from the real binary, head-lessly, by CI on every push (`docs/shots/`):
+Rendered from the real binary, head-lessly, by CI on every push (branch `void-preview`):
 
 | | |
 |---|---|
-| ![dashboard](docs/shots/dashboard.png) | ![optimizer](docs/shots/optimize.png) |
-| ![profiles](docs/shots/profiles.png) | ![free fire](docs/shots/freefire.png) |
-| ![network](docs/shots/network.png) | ![monitor](docs/shots/monitor.png) |
-| ![aim lab](docs/shots/aim.png) | ![settings](docs/shots/settings.png) |
+| ![dashboard](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/dashboard.png) | ![optimizer](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/optimize.png) |
+| ![profiles](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/profiles.png) | ![free fire](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/freefire.png) |
+| ![network](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/network.png) | ![monitor](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/monitor.png) |
+| ![aim lab](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/aim.png) | ![settings](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/settings.png) |
 
 ## What VOID is
 
