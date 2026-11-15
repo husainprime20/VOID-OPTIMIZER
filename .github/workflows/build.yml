@@ -1,12 +1,15 @@
 name: build
 
-# Builds the Windows executable for VOID.
-#   • every push        → builds a downloadable artifact
-#   • commit with       → builds AND publishes the GitHub release
+# Builds VOID for Windows x64.
+#   • every push        → compiles both binaries + downloads an artifact
+#   • commit with       → compiles AND publishes the GitHub release
 #     "[release]" in      (tag: v<version from Cargo.toml>, targeted at main)
 #     the message
-#   • a v* tag push     → builds AND publishes the release
+#   • a v* tag push     → compiles AND publishes the release
 #   • manual run        → set `release: true` to publish
+#
+# GitHub Actions is the only compiler that can see crates.io for this project,
+# so this workflow doubles as the build + smoke-test gate for the native UI.
 
 on:
   push:
@@ -27,6 +30,7 @@ env:
   # Statically link the MSVC runtime so the exe runs on a clean Windows install
   # without the VC++ redistributable.
   RUSTFLAGS: "-C target-feature=+crt-static"
+  CARGO_NET_RETRY: "10"
 
 jobs:
   windows-x64:
@@ -42,27 +46,46 @@ jobs:
           rustc -Vv
           cargo -V
 
-      # VOID has zero dependencies, so this needs no network and no cache.
-      - name: Build (release)
-        run: cargo build --release
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Smoke test the binary
+      # Both binaries: the native window (VOID.exe) and the console companion.
+      - name: Build (release)
+        run: cargo build --release --bins
+
+      - name: Smoke test
         shell: pwsh
         run: |
           $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
           "VOID_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          $out = & .\target\release\void.exe --version
-          Write-Host "version output: $out"
-          if ($out -notmatch "void $version") { throw "unexpected --version output: $out" }
+          $out = & .\target\release\void-cli.exe --version
+          Write-Host "cli --version: $out"
+          if ($out -notmatch [regex]::Escape($version)) { throw "unexpected --version output: $out" }
 
-          & .\target\release\void.exe catalog > catalog.json
+          & .\target\release\void-cli.exe catalog > catalog.json
           $size = (Get-Item catalog.json).Length
           Write-Host "catalog.json: $size bytes"
           if ($size -lt 5000) { throw "catalog output looks truncated ($size bytes)" }
 
-          & .\target\release\void.exe status --json | Out-File -Encoding utf8 status.json
+          & .\target\release\void-cli.exe status --json | Out-File -Encoding utf8 status.json
           Get-Content status.json -Raw
+
+          # The GUI binary has no console, so it proves itself head-lessly and
+          # writes a report. Start-Process -Wait is required: PowerShell does not
+          # wait for a windows-subsystem executable on its own.
+          $p = Start-Process -FilePath .\target\release\void.exe -ArgumentList '--selftest' -Wait -PassThru
+          Write-Host "VOID.exe --selftest exit: $($p.ExitCode)"
+          if (Test-Path void-selftest.txt) { Get-Content void-selftest.txt -Raw }
+          if ($p.ExitCode -ne 0) { throw "VOID.exe --selftest failed with exit code $($p.ExitCode)" }
+          if (-not (Select-String -Path void-selftest.txt -Pattern '^ok=true' -Quiet)) { throw "selftest did not report ok=true" }
 
       - name: Package
         shell: pwsh
@@ -70,40 +93,50 @@ jobs:
           $ver = $env:VOID_VERSION
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target\release\void.exe dist\VOID.exe
+          Copy-Item target\release\void-cli.exe dist\void-cli.exe
           Copy-Item README.md dist\README.md
 
           @"
           VOID $ver — competitive gaming optimizer
           ========================================
 
+          A native Windows desktop app. No browser, no webview, no installer.
+
           HOW TO RUN
-          1. Double-click  RUN-AS-ADMIN.bat
-             (or right-click VOID.exe → "Run as administrator").
-          2. A window opens on http://127.0.0.1:8722
-          3. Press IGNITE, or open Profiles and engage one.
+          1. Double-click VOID.exe.
+             Windows asks for Administrator once (the tweaks need it) — say yes.
+          2. The window opens. Press IGNITE, or open Profiles and engage one.
+
+          WHAT YOU GET
+          - 42 documented, reversible tweaks across power, kernel, CPU, GPU,
+            network, input, storage and a dedicated Free Fire lane.
+          - Live telemetry, sleep-jitter benchmark, process boost, eDPI lab.
+          - Built-in ambient bed (three presets, volume control) — calm, low, slow.
+          - Dry run, automatic restore point, one-click revert of everything.
 
           SAFETY
           - Nothing runs until you press a button; every command is shown first.
-          - Settings → Dry run prints commands without changing anything.
+          - Settings -> Dry run prints commands without changing anything.
           - "Revert all" restores every value VOID touched.
           - VOID never touches game files, game memory or anti-cheat.
           - Journal: %APPDATA%\VOID\void.log
 
           Windows SmartScreen may warn because this build is not code-signed.
-          More info → "Run anyway".
+          More info -> "Run anyway".
 
-          CLI
-            VOID.exe status --json
-            VOID.exe apply freefire
-            VOID.exe revert
-            VOID.exe bench
+          CONSOLE COMPANION (optional)
+            void-cli.exe status --json
+            void-cli.exe apply freefire
+            void-cli.exe revert
+            void-cli.exe bench
 
           Build from source: https://github.com/${{ github.repository }}
           "@ | Set-Content -Encoding utf8 dist\READ-ME-FIRST.txt
 
           @"
           @echo off
-          rem Launches VOID elevated (the exe has no embedded manifest).
+          rem Same as double-clicking VOID.exe: it elevates itself. Kept for people
+          rem who prefer an explicit "run as admin" shortcut.
           powershell -NoProfile -Command "Start-Process -FilePath '%~dp0VOID.exe' -WorkingDirectory '%~dp0' -Verb RunAs"
           "@ | Set-Content -Encoding ascii dist\RUN-AS-ADMIN.bat
 
@@ -117,7 +150,7 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $entries = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path "VOID-$ver-windows-x64.zip")).Entries.FullName
           Write-Host ("zip entries: " + ($entries -join ", "))
-          foreach ($need in @("VOID.exe", "RUN-AS-ADMIN.bat", "READ-ME-FIRST.txt", "README.md")) {
+          foreach ($need in @("VOID.exe", "void-cli.exe", "RUN-AS-ADMIN.bat", "READ-ME-FIRST.txt", "README.md")) {
             if ($entries -notcontains $need) { throw "zip is missing $need" }
           }
 
@@ -131,6 +164,7 @@ jobs:
           name: VOID-windows-x64
           path: |
             dist/VOID.exe
+            dist/void-cli.exe
             VOID-*-windows-x64.zip
             SHA256SUMS.txt
           if-no-files-found: error
@@ -151,7 +185,7 @@ jobs:
           } else {
             $tag = "v$ver"
           }
-          $assets = @("dist/VOID.exe", "VOID-$ver-windows-x64.zip", "SHA256SUMS.txt")
+          $assets = @("dist/VOID.exe", "dist/void-cli.exe", "VOID-$ver-windows-x64.zip", "SHA256SUMS.txt")
 
           $sha = $env:GITHUB_SHA
           $repo = $env:GITHUB_REPOSITORY
@@ -159,23 +193,38 @@ jobs:
           $notes = @"
           ## VOID $ver — Windows x64
 
-          Zero-dependency competitive gaming optimizer: one exe, no installer, no runtime, no telemetry.
+          A real desktop app: one native window, drawn on the GPU. No Chromium, no
+          webview, no localhost server, no console window behind it.
 
-          **Run:** extract, then RUN-AS-ADMIN.bat (or right-click VOID.exe → *Run as administrator*).
+          **Run:** double-click VOID.exe. It asks for Administrator once, then opens.
+
+          ### What changed in 0.2.0
+          - **Native UI.** The browser-based surface is gone. The window is rendered
+            with egui (OpenGL), so it opens instantly, works offline, and has no
+            "engine offline" state to fall into — the engine runs in the same process.
+          - **No terminal window.** The binary is built for the Windows GUI subsystem
+            and every helper process (reg, sc, powercfg, PowerShell) is spawned with
+            CREATE_NO_WINDOW.
+          - **Real ambient audio.** A synthesised drone — 55 Hz floor, detuned fifths,
+            slow filtered air, one soft bell every ~11 s. Three presets, volume control.
+          - **Persistent applied stack.** Applied tweaks survive restarts and dry-run no
+            longer claims a change that was never written.
+          - **New:** live process list with one-click priority boost, emulator
+            detection + boost, sleep-jitter benchmark panel, eDPI/360° converter with
+            per-game sensitivity equivalents, restore point from anywhere.
 
           ### What's inside
           - **42** documented, reversible tweaks · **7** profiles
-          - **Kernel tier** — high-resolution timer, TSC sync policy, HAGS, `Win32PrioritySeparation`, VBS off
-          - **Free Fire / FF Max** — emulator priority, physical-core pinning, low-latency net stack, pre-match boost
+          - **Kernel tier** — timer resolution, TSC sync policy, HAGS, Win32PrioritySeparation, VBS off
+          - **Free Fire / FF Max** — emulator priority and core pinning, low-latency net stack
           - **Latency** — Nagle off on every interface, MMCSS Games task, network throttling off
           - **Frame pacing** — Game DVR off, true exclusive fullscreen, PCIe always-on
-          - Monochrome animated UI, ambient audio engine, live telemetry, jitter benchmark, eDPI lab
           - Every command is visible before it runs, and everything can be reverted
 
           ### Notes
           - Not code-signed: SmartScreen will ask once → *More info* → *Run anyway*.
-          - Requires Windows 10/11 x64 and Administrator for kernel-tier tweaks.
-          - Static CRT: no Visual C++ redistributable needed.
+          - Requires Windows 10/11 x64. Static CRT: no Visual C++ redistributable.
+          - void-cli.exe is the optional console companion (status/apply/revert/bench).
 
           Built from $sha by GitHub Actions on windows-latest. Source: $url
           "@

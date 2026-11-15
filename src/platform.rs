@@ -275,3 +275,199 @@ pub fn open_window(url: &str) {
         let _ = run("xdg-open", &[url]);
     }
 }
+
+// ── native shell integration ─────────────────────────────────────────────────
+
+#[cfg(windows)]
+mod win {
+    #[link(name = "shell32")]
+    extern "system" {
+        pub fn ShellExecuteW(
+            hwnd: isize,
+            op: *const u16,
+            file: *const u16,
+            params: *const u16,
+            dir: *const u16,
+            show: i32,
+        ) -> isize;
+    }
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn MessageBoxW(hwnd: isize, text: *const u16, caption: *const u16, kind: u32) -> i32;
+    }
+    #[link(name = "ntdll")]
+    extern "system" {
+        pub fn NtQueryTimerResolution(min: *mut u32, max: *mut u32, cur: *mut u32) -> i32;
+    }
+}
+
+#[cfg(windows)]
+fn wide(s: &str) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+    std::ffi::OsStr::new(s).encode_wide().chain(Some(0)).collect()
+}
+
+/// Re-launch this executable elevated. Returns true when a new elevated
+/// process was started (the caller must then exit).
+#[cfg(windows)]
+pub fn elevate() -> bool {
+    if is_admin() {
+        return false;
+    }
+    let exe = match env::current_exe() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let file = wide(&exe.to_string_lossy());
+    let op = wide("runas");
+    let rc = unsafe {
+        win::ShellExecuteW(
+            0,
+            op.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        )
+    };
+    // >32 means success; 5 (SE_ERR_ACCESSDENIED) means the user declined UAC.
+    rc > 32
+}
+
+#[cfg(not(windows))]
+pub fn elevate() -> bool {
+    false
+}
+
+/// Native modal dialog — used for fatal errors where no window exists yet.
+pub fn message_box(title: &str, text: &str) {
+    #[cfg(windows)]
+    {
+        let t = wide(text);
+        let c = wide(title);
+        unsafe {
+            win::MessageBoxW(0, t.as_ptr(), c.as_ptr(), 0x0000_0010 | 0x0000_0040);
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("{}: {}", title, text);
+    }
+}
+
+/// Launch a program with no console and no wait.
+pub fn spawn_detached(path: &str) -> Result<(), String> {
+    let mut cmd = Command::new(path);
+    hide_console(&mut cmd);
+    match cmd.spawn() {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("{}: {}", path, e)),
+    }
+}
+
+pub fn exists(path: &str) -> bool {
+    std::path::Path::new(path).exists()
+}
+
+/// Current system timer resolution in milliseconds (Windows: 15.6 / 1.0 / 0.5).
+#[cfg(windows)]
+pub fn timer_resolution_ms() -> Option<f64> {
+    let mut a = 0u32;
+    let mut b = 0u32;
+    let mut cur = 0u32;
+    let st = unsafe { win::NtQueryTimerResolution(&mut a, &mut b, &mut cur) };
+    if st == 0 && cur > 0 {
+        Some(cur as f64 / 10_000.0)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(windows))]
+pub fn timer_resolution_ms() -> Option<f64> {
+    None
+}
+
+/// Active Windows power plan, e.g. "Balanced" / "High performance".
+pub fn power_plan() -> String {
+    if !cfg!(windows) {
+        return "n/a".to_string();
+    }
+    match run("powercfg", &["/getactivescheme"]) {
+        Ok(o) => {
+            let s = o.combined();
+            if let (Some(i), Some(j)) = (s.find('('), s.rfind(')')) {
+                if j > i + 1 {
+                    return s[i + 1..j].trim().to_string();
+                }
+            }
+            "unknown".to_string()
+        }
+        Err(_) => "unknown".to_string(),
+    }
+}
+
+/// `tasklist` → (image name, pid, working set in MB), sorted by memory.
+pub fn processes() -> Vec<(String, u32, f64)> {
+    let mut out: Vec<(String, u32, f64)> = Vec::new();
+    if !cfg!(windows) {
+        return out;
+    }
+    if let Ok(o) = run("tasklist", &["/fo", "csv", "/nh"]) {
+        for line in o.stdout.lines() {
+            let cols: Vec<&str> = line
+                .trim()
+                .trim_matches('"')
+                .split("\",\"")
+                .map(|s| s.trim_matches('"'))
+                .collect();
+            if cols.len() < 5 {
+                continue;
+            }
+            let name = cols[0].to_string();
+            let pid: u32 = cols[1].parse().unwrap_or(0);
+            let mem: f64 = cols[4]
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse::<f64>()
+                .unwrap_or(0.0)
+                / 1024.0;
+            if pid > 0 && !name.is_empty() {
+                out.push((name, pid, mem));
+            }
+        }
+    }
+    out.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    out
+}
+
+pub fn is_process_running(exe: &str) -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    let script = format!(
+        "if (Get-Process -Name '{}' -ErrorAction SilentlyContinue) {{ 'yes' }} else {{ 'no' }}",
+        exe.trim_end_matches(".exe")
+    );
+    matches!(powershell(&script), Ok(o) if o.combined().contains("yes"))
+}
+
+/// Raise a process' priority class without needing a handle from Rust.
+pub fn set_priority(pid: u32, class: &str) -> Result<String, String> {
+    let script = format!(
+        "try {{ $p = Get-Process -Id {} -ErrorAction Stop; $p.PriorityClass = '{}'; 'ok' }} catch {{ 'fail ' + $_.Exception.Message }}",
+        pid, class
+    );
+    match powershell(&script) {
+        Ok(o) => {
+            let s = o.combined();
+            if s.contains("ok") {
+                Ok(format!("{} → {}", pid, class))
+            } else {
+                Err(s)
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
