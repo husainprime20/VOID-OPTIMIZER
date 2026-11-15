@@ -181,25 +181,23 @@ pub fn os_build() -> String {
     format!("{}", os_name())
 }
 
+#[cfg(windows)]
 pub fn uptime_secs() -> i64 {
-    if cfg!(windows) {
-        if let Ok(o) = powershell(
-            "[int]((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds",
-        ) {
-            if let Ok(v) = o.stdout.trim().parse::<f64>() {
-                return v as i64;
-            }
-        }
-        0
-    } else if let Ok(text) = std::fs::read_to_string("/proc/uptime") {
-        let first = text.split_whitespace().next().unwrap_or("0");
-        first.parse::<f64>().unwrap_or(0.0) as i64
-    } else {
-        0
+    (unsafe { kern::GetTickCount64() } / 1000) as i64
+}
+
+#[cfg(not(windows))]
+pub fn uptime_secs() -> i64 {
+    match std::fs::read_to_string("/proc/uptime") {
+        Ok(text) => text
+            .split_whitespace()
+            .next()
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(0.0) as i64,
+        Err(_) => 0,
     }
 }
 
-/// Seconds since the unix epoch.
 pub fn epoch_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -470,4 +468,108 @@ pub fn set_priority(pid: u32, class: &str) -> Result<String, String> {
         }
         Err(e) => Err(e),
     }
+}
+
+// ── instant telemetry (no process spawn, no PowerShell) ─────────────────────
+
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct FileTime {
+    low: u32,
+    high: u32,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct MemStatusEx {
+    length: u32,
+    memory_load: u32,
+    total_phys: u64,
+    avail_phys: u64,
+    total_page: u64,
+    avail_page: u64,
+    total_virtual: u64,
+    avail_virtual: u64,
+    avail_extended: u64,
+}
+
+#[cfg(windows)]
+mod kern {
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub fn GetSystemTimes(idle: *mut super::FileTime, kernel: *mut super::FileTime, user: *mut super::FileTime) -> i32;
+        pub fn GlobalMemoryStatusEx(mem: *mut super::MemStatusEx) -> i32;
+        pub fn GetTickCount64() -> u64;
+    }
+}
+
+/// (idle, total) CPU ticks. Cheap on every platform — the caller keeps the delta.
+#[cfg(windows)]
+pub fn cpu_ticks() -> Option<(u64, u64)> {
+    let mut idle = FileTime::default();
+    let mut kernel = FileTime::default();
+    let mut user = FileTime::default();
+    let ok = unsafe { kern::GetSystemTimes(&mut idle, &mut kernel, &mut user) };
+    if ok == 0 {
+        return None;
+    }
+    let f = |t: FileTime| ((t.high as u64) << 32) | t.low as u64;
+    // kernel time already contains idle time
+    Some((f(idle), f(kernel) + f(user)))
+}
+
+#[cfg(not(windows))]
+pub fn cpu_ticks() -> Option<(u64, u64)> {
+    let text = std::fs::read_to_string("/proc/stat").ok()?;
+    let line = text.lines().next()?;
+    let mut vals = line.split_whitespace().skip(1).filter_map(|p| p.parse::<u64>().ok());
+    let _user = vals.next()?;
+    let _nice = vals.next()?;
+    let _system = vals.next()?;
+    let idle = vals.next()?;
+    let iowait = vals.next().unwrap_or(0);
+    let mut total: u64 = _user + _nice + _system + idle + iowait;
+    for v in vals {
+        total = total.saturating_add(v);
+    }
+    Some((idle + iowait, total))
+}
+
+/// (total GB, used GB)
+#[cfg(windows)]
+pub fn ram() -> (f64, f64) {
+    let mut m = MemStatusEx::default();
+    m.length = std::mem::size_of::<MemStatusEx>() as u32;
+    let ok = unsafe { kern::GlobalMemoryStatusEx(&mut m) };
+    if ok == 0 {
+        return (0.0, 0.0);
+    }
+    let gb = 1024.0 * 1024.0 * 1024.0;
+    let total = m.total_phys as f64 / gb;
+    let used = (m.total_phys.saturating_sub(m.avail_phys)) as f64 / gb;
+    (total, used)
+}
+
+#[cfg(not(windows))]
+pub fn ram() -> (f64, f64) {
+    let mut total = 0.0f64;
+    let mut avail = 0.0f64;
+    if let Ok(text) = std::fs::read_to_string("/proc/meminfo") {
+        for line in text.lines() {
+            if let Some(rest) = line.strip_prefix("MemTotal:") {
+                total = rest.trim().trim_end_matches("kB").trim().parse::<f64>().unwrap_or(0.0)
+                    / 1024.0
+                    / 1024.0;
+            }
+            if let Some(rest) = line.strip_prefix("MemAvailable:") {
+                avail = rest.trim().trim_end_matches("kB").trim().parse::<f64>().unwrap_or(0.0)
+                    / 1024.0
+                    / 1024.0;
+            }
+        }
+    }
+    let used = if total > avail { total - avail } else { 0.0 };
+    (total, used)
 }

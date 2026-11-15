@@ -12,9 +12,10 @@ use self::catalog::{Action, CATEGORIES, PROFILES, TWEAKS};
 use std::collections::BTreeSet;
 use std::fs;
 use std::thread;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.2.1";
+pub const VERSION: &str = "0.2.2";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -915,11 +916,25 @@ pub struct Stats {
     pub uptime: i64,
 }
 
+static CPU_IDLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static CPU_TOTAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn sample() -> Stats {
-    let (cpu, total_gb, used_gb) = if platform::is_windows() {
-        stats_windows()
-    } else {
-        stats_unix()
+    // Native counters only: no PowerShell, no sleeping on the UI thread.
+    let (total_gb, used_gb) = platform::ram();
+    let cpu = match platform::cpu_ticks() {
+        Some((idle, total)) => {
+            let prev_idle = CPU_IDLE.swap(idle, Ordering::Relaxed);
+            let prev_total = CPU_TOTAL.swap(total, Ordering::Relaxed);
+            if prev_total == 0 || total <= prev_total {
+                0.0
+            } else {
+                let d_total = (total - prev_total) as f64;
+                let d_idle = idle.saturating_sub(prev_idle) as f64;
+                (((d_total - d_idle) / d_total) * 100.0).clamp(0.0, 100.0)
+            }
+        }
+        None => 0.0,
     };
     Stats {
         cpu,

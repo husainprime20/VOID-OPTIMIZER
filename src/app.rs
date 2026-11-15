@@ -166,7 +166,9 @@ impl App {
         if !state.muted && state.volume > 0 {
             audio.play();
         }
-        let stats = Stats::default();
+        // prime the CPU counters so the first painted frame has a real delta
+        let primed = engine::sample();
+        let stats = if primed.total_gb > 0.0 { primed } else { Stats::default() };
         // Lets CI render a specific view head-lessly (see .github/workflows/preview.yml)
         let view = match std::env::var("VOID_VIEW").unwrap_or_default().as_str() {
             "optimize" => View::Optimize,
@@ -322,7 +324,7 @@ impl App {
 
     fn poll(&mut self, ctx: &egui::Context, now: f64) {
         let live = matches!(self.view, View::Dashboard | View::Monitor);
-        if live && now - self.polled_at > 2.0 {
+        if live && now - self.polled_at > 1.0 {
             self.polled_at = now;
             self.stats = engine::sample();
             self.cpu_hist.push(self.stats.cpu as f32);

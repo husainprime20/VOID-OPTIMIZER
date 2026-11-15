@@ -71,14 +71,15 @@ jobs:
           done
           ls -la docs/shots/
 
-      - name: Commit the screenshots
+      - name: Publish screenshots to the void-preview branch
         run: |
           git config user.name "void-preview"
           git config user.email "actions@github.com"
-          git add docs/shots
+          git checkout -B void-preview
+          git add -f docs/shots
           if git diff --cached --quiet; then
             echo "no visual change"
             exit 0
           fi
           git commit -m "design: refresh native UI screenshots [skip ci]"
-          git push
+          git push --force origin void-preview

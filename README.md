@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.2.1` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
+`v0.2.2` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -41,14 +41,14 @@ A native desktop app — one window, drawn on the GPU. Engine in-process, every 
 
 ## Screenshots
 
-Rendered from the real binary, head-lessly, by CI on every push (`docs/shots/`):
+Rendered from the real binary, head-lessly, by CI on every push (branch `void-preview`):
 
 | | |
 |---|---|
-| ![dashboard](docs/shots/dashboard.png) | ![optimizer](docs/shots/optimize.png) |
-| ![profiles](docs/shots/profiles.png) | ![free fire](docs/shots/freefire.png) |
-| ![network](docs/shots/network.png) | ![monitor](docs/shots/monitor.png) |
-| ![aim lab](docs/shots/aim.png) | ![settings](docs/shots/settings.png) |
+| ![dashboard](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/dashboard.png) | ![optimizer](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/optimize.png) |
+| ![profiles](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/profiles.png) | ![free fire](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/freefire.png) |
+| ![network](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/network.png) | ![monitor](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/monitor.png) |
+| ![aim lab](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/aim.png) | ![settings](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/settings.png) |
 
 ## What VOID is
 
@@ -86,6 +86,8 @@ documented way back.
 * **Real ambient audio.** The busy WebAudio loop is gone. `src/audio.rs` synthesises a
   drone: 55 Hz floor, two detuned fifths that beat at ~2 mHz, filtered air, and one soft
   bell every ~11 s. Three presets — *Nocturne*, *Aurora*, *Cosmos* — with a volume slider.
+* **Instant telemetry.** CPU, RAM and uptime come from `kernel32` counters, not from
+  spawning PowerShell every second — the UI never stutters while it watches itself.
 * **Applied stack persists.** Reopen the app and it still knows what it changed.
 * **Dry run is honest.** In dry-run, a tweak is logged and shown but never marked applied.
 * **New:** game watch (recognises a running game and offers the matching loadout),
