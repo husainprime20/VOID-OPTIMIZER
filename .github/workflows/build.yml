@@ -1,9 +1,12 @@
 name: build
 
 # Builds the Windows executable for VOID.
-#   • every push  → builds a downloadable artifact (no release)
-#   • a v* tag    → builds and publishes a GitHub release with the exe + zip
-#   • manual run  → set `release: true` to also publish
+#   • every push        → builds a downloadable artifact
+#   • commit with       → builds AND publishes the GitHub release
+#     "[release]" in      (tag: v<version from Cargo.toml>, targeted at main)
+#     the message
+#   • a v* tag push     → builds AND publishes the release
+#   • manual run        → set `release: true` to publish
 
 on:
   push:
@@ -32,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Toolchain
         run: |
@@ -59,7 +62,7 @@ jobs:
           if ($size -lt 5000) { throw "catalog output looks truncated ($size bytes)" }
 
           & .\target\release\void.exe status --json | Out-File -Encoding utf8 status.json
-          Write-Host (Get-Content status.json -Raw)
+          Get-Content status.json -Raw
 
       - name: Package
         shell: pwsh
@@ -71,12 +74,12 @@ jobs:
 
           @"
           VOID $ver — competitive gaming optimizer
-          ===========================================
+          ========================================
 
           HOW TO RUN
-          1. Double-click  RUN-AS-ADMIN.bat   (kernel-tier tweaks need elevation)
-             or right-click VOID.exe → "Run as administrator".
-          2. Your browser-engine window opens on http://127.0.0.1:8722
+          1. Double-click  RUN-AS-ADMIN.bat
+             (or right-click VOID.exe → "Run as administrator").
+          2. A window opens on http://127.0.0.1:8722
           3. Press IGNITE, or open Profiles and engage one.
 
           SAFETY
@@ -115,7 +118,7 @@ jobs:
           Get-Content SHA256SUMS.txt
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VOID-windows-x64
           path: |
@@ -126,7 +129,10 @@ jobs:
           retention-days: 90
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
+        if: >-
+          startsWith(github.ref, 'refs/tags/v') ||
+          inputs.release ||
+          contains(github.event.head_commit.message, '[release]')
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,25 +143,38 @@ jobs:
           } else {
             $tag = "v$ver"
           }
+          $assets = @("dist/VOID.exe", "VOID-$ver-windows-x64.zip", "SHA256SUMS.txt")
+
           $notes = @"
           ## VOID $ver — Windows x64
 
-          Zero-dependency competitive gaming optimizer (single exe, no installer, no runtime).
+          Zero-dependency competitive gaming optimizer: one exe, no installer, no runtime, no telemetry.
 
-          **Run:** extract, then `RUN-AS-ADMIN.bat` (or right-click `VOID.exe` → Run as administrator).
+          **Run:** extract, then `RUN-AS-ADMIN.bat` (or right-click `VOID.exe` → *Run as administrator*).
 
-          - 42 documented, reversible tweaks · 7 profiles
-          - Free Fire / FF Max: emulator priority, physical-core pinning, low-latency net stack
-          - Kernel tier: high-resolution timer, TSC policy, HAGS, scheduler bias
-          - Ambient audio engine, live telemetry, jitter benchmark, eDPI lab
-          - Everything is visible before it runs, and every change can be reverted
+          ### What's inside
+          - **42** documented, reversible tweaks · **7** profiles
+          - **Kernel tier** — high-resolution timer, TSC sync policy, HAGS, `Win32PrioritySeparation`, VBS off
+          - **Free Fire / FF Max** — emulator priority, physical-core pinning, low-latency net stack, pre-match boost
+          - **Latency** — Nagle off on every interface, MMCSS Games task, network throttling off
+          - **Frame pacing** — Game DVR off, true exclusive fullscreen, PCIe always-on
+          - Monochrome animated UI, ambient audio engine, live telemetry, jitter benchmark, eDPI lab
+          - Every command is visible before it runs, and everything can be reverted
 
-          Built from `$env:GITHUB_SHA` on GitHub Actions (windows-latest, static CRT).
+          ### Notes
+          - Not code-signed: SmartScreen will ask once → *More info* → *Run anyway*.
+          - Requires Windows 10/11 x64 and Administrator for kernel-tier tweaks.
+          - Static CRT: no Visual C++ redistributable needed.
+
+          Built from `$env:GITHUB_SHA` by GitHub Actions (windows-latest). Source: https://github.com/$env:GITHUB_REPOSITORY
           "@
-          gh release create $tag `
-            --target main `
-            --title "VOID $ver" `
-            --notes $notes `
-            "dist/VOID.exe" `
-            "VOID-$ver-windows-x64.zip" `
-            "SHA256SUMS.txt"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "release $tag exists — uploading assets"
+            gh release upload $tag @assets --clobber
+          } else {
+            Write-Host "creating release $tag (target: main)"
+            gh release create $tag --target main --title "VOID $ver" --notes $notes @assets
+          }
+          gh release view $tag
