@@ -1,0 +1,7 @@
+/target
+**/*.rs.bk
+data/
+.preview/
+*.log
+.DS_Store
+__pycache__/
