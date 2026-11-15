@@ -111,14 +111,14 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
             ui.add_space(8.0);
             for a in t.apply.iter() {
                 ui.add(egui::Label::new(
-                    RichText::new(format!("→ {}", catalog::action_text(a)))
+                    RichText::new(format!("-> {}", catalog::action_text(a)))
                         .font(mono_font(10.5))
                         .color(FAINT),
                 ));
             }
             for a in t.revert.iter() {
                 ui.add(egui::Label::new(
-                    RichText::new(format!("← {}", catalog::action_text(a)))
+                    RichText::new(format!("<- {}", catalog::action_text(a)))
                         .font(mono_font(10.5))
                         .color(GHOST),
                 ));
@@ -163,6 +163,7 @@ pub fn by_category(app: &mut App, ui: &mut Ui, cat: &'static str) {
 fn stat_card(ui: &mut Ui, label: &str, value: String, unit: &str, hist: &[f32], max: f32) {
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
+        ui.set_min_height(98.0);
         theme::micro(ui, label);
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -193,7 +194,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
 
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
+        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
             ui.vertical(|ui| {
                 ui.set_width((ui.available_width() - 200.0).max(320.0));
                 theme::micro(ui, "catalog coverage");
@@ -256,7 +257,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     let w = ui.available_width();
     let gap = 10.0;
     let cw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = gap;
         ui.allocate_ui_with_layout(
             Vec2::new(cw, 0.0),
@@ -295,6 +296,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.set_width(cw);
                 theme::card(ui, |ui| {
                     ui.set_width(ui.available_width());
+                    ui.set_min_height(98.0);
                     theme::micro(ui, "sleep jitter");
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -323,6 +325,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.set_width(cw);
                 theme::card(ui, |ui| {
                     ui.set_width(ui.available_width());
+                    ui.set_min_height(98.0);
                     theme::micro(ui, "session");
                     ui.add_space(4.0);
                     let up = app.started.elapsed().as_secs();
@@ -345,12 +348,13 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
 
     let w = ui.available_width();
     let half = (w - 12.0) * 0.5;
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
+                ui.set_min_height(148.0);
                 ui.horizontal(|ui| {
                     theme::micro(ui, "applied stack");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -380,6 +384,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
+                ui.set_min_height(148.0);
                 ui.horizontal(|ui| {
                     theme::micro(ui, "journal");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -484,7 +489,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
     let w = ui.available_width();
     let half = (w - 12.0) * 0.5;
 
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
@@ -545,8 +550,11 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 });
                 if let Some(err) = &app.audio.error {
                     ui.add_space(8.0);
+                    let short: String = err.chars().take(78).collect();
                     ui.add(egui::Label::new(
-                        RichText::new(err).font(mono_font(10.0)).color(FAINT),
+                        RichText::new(format!("audio: {}", short))
+                            .font(mono_font(10.0))
+                            .color(GHOST),
                     ));
                 }
             });

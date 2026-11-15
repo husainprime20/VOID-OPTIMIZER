@@ -49,7 +49,11 @@ pub fn mono_font(size: f32) -> FontId {
 pub fn tracked(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 2);
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && ch != ' ' {
+        if ch == ' ' {
+            out.push_str("  ");
+            continue;
+        }
+        if i > 0 {
             out.push(' ');
         }
         out.extend(ch.to_uppercase());
@@ -363,7 +367,6 @@ pub fn ring(ui: &mut Ui, pct: f32, size: f32, caption: &str) {
 /// Sparkline with a soft fill under the curve.
 pub fn spark(ui: &mut Ui, values: &[f32], size: Vec2, max: f32) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, a(WHITE, 3));
     if values.len() < 2 {
         return;
     }
@@ -380,13 +383,19 @@ pub fn spark(ui: &mut Ui, values: &[f32], size: Vec2, max: f32) {
         })
         .collect();
 
-    let mut poly = pts.clone();
-    poly.push(Pos2::new(rect.right(), rect.bottom()));
-    poly.push(Pos2::new(rect.left(), rect.bottom()));
+    // A flat (or near-flat) series would tessellate into a degenerate polygon,
+    // which epaint fills as a solid block — so only fill when there is a shape.
+    let top = pts.iter().fold(f32::INFINITY, |m, p| m.min(p.y));
+    let bottom = pts.iter().fold(f32::NEG_INFINITY, |m, p| m.max(p.y));
+    if bottom - top > 2.0 {
+        let mut poly = pts.clone();
+        poly.push(Pos2::new(rect.right(), rect.bottom()));
+        poly.push(Pos2::new(rect.left(), rect.bottom()));
+        ui.painter()
+            .add(egui::Shape::convex_polygon(poly, a(WHITE, 9), Stroke::NONE));
+    }
     ui.painter()
-        .add(egui::Shape::convex_polygon(poly, a(WHITE, 10), Stroke::NONE));
-    ui.painter()
-        .add(egui::Shape::line(pts, Stroke::new(1.2_f32, a(WHITE, 205))));
+        .add(egui::Shape::line(pts, Stroke::new(1.2_f32, a(WHITE, 210))));
 }
 
 /// Big number + caption block.
