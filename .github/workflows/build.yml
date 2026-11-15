@@ -113,6 +113,14 @@ jobs:
           Get-FileHash dist\VOID.exe -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash)  VOID.exe" } | Add-Content SHA256SUMS.txt
 
+          # self-verify the portable zip
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $entries = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path "VOID-$ver-windows-x64.zip")).Entries.FullName
+          Write-Host ("zip entries: " + ($entries -join ", "))
+          foreach ($need in @("VOID.exe", "RUN-AS-ADMIN.bat", "READ-ME-FIRST.txt", "README.md")) {
+            if ($entries -notcontains $need) { throw "zip is missing $need" }
+          }
+
           $kb = [math]::Round((Get-Item dist\VOID.exe).Length / 1KB, 0)
           Write-Host "VOID.exe: $kb KB"
           Get-Content SHA256SUMS.txt
@@ -145,12 +153,15 @@ jobs:
           }
           $assets = @("dist/VOID.exe", "VOID-$ver-windows-x64.zip", "SHA256SUMS.txt")
 
+          $sha = $env:GITHUB_SHA
+          $repo = $env:GITHUB_REPOSITORY
+          $url = "https://github.com/$repo"
           $notes = @"
           ## VOID $ver — Windows x64
 
           Zero-dependency competitive gaming optimizer: one exe, no installer, no runtime, no telemetry.
 
-          **Run:** extract, then `RUN-AS-ADMIN.bat` (or right-click `VOID.exe` → *Run as administrator*).
+          **Run:** extract, then RUN-AS-ADMIN.bat (or right-click VOID.exe → *Run as administrator*).
 
           ### What's inside
           - **42** documented, reversible tweaks · **7** profiles
@@ -166,7 +177,7 @@ jobs:
           - Requires Windows 10/11 x64 and Administrator for kernel-tier tweaks.
           - Static CRT: no Visual C++ redistributable needed.
 
-          Built from `$env:GITHUB_SHA` by GitHub Actions (windows-latest). Source: https://github.com/$env:GITHUB_REPOSITORY
+          Built from $sha by GitHub Actions on windows-latest. Source: $url
           "@
 
           gh release view $tag *> $null
