@@ -56,6 +56,38 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      # `cargo check` first: it is the fastest way to fail, and on failure the
+      # errors are re-emitted as check-run annotations so they are readable from
+      # anywhere (the raw step log lives on a CDN that some networks block).
+      - name: Check
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo check --bins 2>&1 | Tee-Object -FilePath check.log | Out-Null
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $lines = Get-Content check.log
+            $blocks = @()
+            $cur = $null
+            foreach ($l in $lines) {
+              if ($l -match '^(error|warning: unused)') {
+                if ($cur) { $blocks += $cur }
+                $cur = $l
+              } elseif ($cur -and $l.Trim() -ne '' -and $blocks.Count -lt 12) {
+                $cur = $cur + ' ~~ ' + $l.Trim()
+                if ($cur.Length -gt 1200) { $blocks += $cur; $cur = $null }
+              }
+            }
+            if ($cur) { $blocks += $cur }
+            $i = 0
+            foreach ($b in ($blocks | Select-Object -First 10)) {
+              $i++
+              Write-Host ("::error title=Rust error $i::" + ($b -replace '\|', '/'))
+            }
+            throw "cargo check failed ($code)"
+          }
+          Write-Host "check ok"
+
       # Both binaries: the native window (VOID.exe) and the console companion.
       - name: Build (release)
         run: cargo build --release --bins
