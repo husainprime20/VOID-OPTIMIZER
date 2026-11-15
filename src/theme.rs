@@ -24,6 +24,15 @@ pub fn a(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
+/// Shorten a machine string so it can never blow up a fixed column.
+pub fn clip(s: &str, n: usize) -> String {
+    let mut out: String = s.chars().take(n).collect();
+    if s.chars().count() > n {
+        out.push('\u{2026}');
+    }
+    out
+}
+
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t.clamp(0.0, 1.0)
 }

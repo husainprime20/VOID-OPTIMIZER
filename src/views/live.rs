@@ -284,9 +284,16 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                     }
                 });
                 ui.add_space(6.0);
+                let delta = match app.bench_prev {
+                    Some(p) => format!(" · {:+.2} ms vs previous run", b.jitter - p.jitter),
+                    None => String::new(),
+                };
                 theme::micro(
                     ui,
-                    &format!("{} samples · one sleep(1ms) each · overshoot = jitter", b.samples),
+                    &format!(
+                        "{} samples · one sleep(1ms) each · overshoot = jitter{}",
+                        b.samples, delta
+                    ),
                 );
             }
             None => {
@@ -391,7 +398,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
 
                 stepper(ui, "dpi", &mut app.dpi, 50.0, 100.0, 25600.0);
                 ui.add_space(8.0);
-                stepper(ui, "sensitivity", &mut app.sens, 1.0, 1.0, 1000.0);
+                stepper(ui, "sensitivity", &mut app.sens, 0.05, 0.05, 5.0);
 
                 ui.add_space(14.0);
                 ui.horizontal(|ui| {
@@ -403,7 +410,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
                     }
                     if theme::chip_button(ui, "reset", false).clicked() {
                         app.dpi = 800.0;
-                        app.sens = 90.0;
+                        app.sens = 0.9;
                     }
                 });
             });
@@ -513,10 +520,13 @@ fn stepper(ui: &mut Ui, label: &str, value: &mut f32, step: f32, min: f32, max: 
                 *value = (*value + step).min(max);
             }
             ui.add_space(4.0);
+            let shown = if step < 1.0 {
+                format!("{:.2}", *value)
+            } else {
+                format!("{:.0}", *value)
+            };
             ui.add(egui::Label::new(
-                RichText::new(format!("{:.0}", *value))
-                    .font(mono_font(13.0))
-                    .color(TXT),
+                RichText::new(shown).font(mono_font(13.0)).color(TXT),
             ));
             ui.add_space(4.0);
             if theme::chip_button(ui, "-", false).clicked() {

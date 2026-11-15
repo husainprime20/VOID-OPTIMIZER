@@ -1039,6 +1039,45 @@ pub fn launch_emulator(path: &str) -> Result<String, String> {
     platform::spawn_detached(path).map(|_| "launcher started".to_string())
 }
 
+/// Games VOID recognises by process name, with the loadout it recommends.
+/// Nothing is launched, injected or hooked — this is a name match on `tasklist`.
+pub const GAMES: &[(&str, &str, &str)] = &[
+    ("cs2.exe", "Counter-Strike 2", "competitive"),
+    ("valorant.exe", "Valorant", "competitive"),
+    ("valorant-win64-shipping.exe", "Valorant", "competitive"),
+    ("r5apex.exe", "Apex Legends", "competitive"),
+    ("rainbowsix.exe", "Rainbow Six Siege", "competitive"),
+    ("fortniteclient-win64-shipping.exe", "Fortnite", "competitive"),
+    ("modernwarfare.exe", "Call of Duty", "competitive"),
+    ("destiny2.exe", "Destiny 2", "competitive"),
+    ("gta5.exe", "GTA V", "gpu"),
+    ("hd-player.exe", "Free Fire (BlueStacks)", "freefire"),
+    ("dnplayer.exe", "Free Fire (LDPlayer)", "freefire"),
+    ("mumuplayer.exe", "Free Fire (MuMu)", "freefire"),
+    ("memu.exe", "Free Fire (MEmu)", "freefire"),
+    ("gameloop.exe", "Free Fire (GameLoop)", "freefire"),
+    ("javaw.exe", "Minecraft", "stream"),
+    ("obs64.exe", "OBS Studio", "stream"),
+];
+
+/// (game, profile) for every recognised game currently in the process table.
+pub fn running_games() -> Vec<(&'static str, &'static str)> {
+    if !platform::is_windows() {
+        return Vec::new();
+    }
+    let procs: Vec<String> = platform::processes()
+        .into_iter()
+        .map(|(n, _, _)| n.to_lowercase())
+        .collect();
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for (exe, name, profile) in GAMES.iter() {
+        if procs.iter().any(|p| p == exe) && !out.iter().any(|(n, _)| n == name) {
+            out.push((name, profile));
+        }
+    }
+    out
+}
+
 pub fn processes() -> Vec<(String, u32, f64)> {
     platform::processes()
 }

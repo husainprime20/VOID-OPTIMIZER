@@ -37,6 +37,19 @@ A native desktop app — one window, drawn on the GPU. Engine in-process, every 
 
 ---
 
+---
+
+## Screenshots
+
+Rendered from the real binary, head-lessly, by CI on every push (`docs/shots/`):
+
+| | |
+|---|---|
+| ![dashboard](docs/shots/dashboard.png) | ![optimizer](docs/shots/optimize.png) |
+| ![profiles](docs/shots/profiles.png) | ![free fire](docs/shots/freefire.png) |
+| ![network](docs/shots/network.png) | ![monitor](docs/shots/monitor.png) |
+| ![aim lab](docs/shots/aim.png) | ![settings](docs/shots/settings.png) |
+
 ## What VOID is
 
 VOID is a **desktop performance toolkit for people who care about the last 3 milliseconds**.
@@ -60,7 +73,8 @@ documented way back.
 | **04 Free Fire** | detects BlueStacks / LDPlayer / MuMu / MEmu / Nox / GameLoop, launches and boosts them |
 | **05 Network** | Nagle off, MMCSS Games task, throttling index, DNS flush, queue-shape sketch |
 | **06 Kernel** | timer resolution, TSC sync, HAGS, `Win32PrioritySeparation`, VBS, core parking |
-| **07 Monitor** | 1-second telemetry, sleep-jitter benchmark (avg/p50/p95/max/score), process list with boost |
+| **07 Monitor** | 1-second telemetry, sleep-jitter benchmark (avg/p50/p95/max/score + delta vs previous run), process list with boost |
+| **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 

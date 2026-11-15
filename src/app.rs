@@ -139,8 +139,11 @@ pub struct App {
     pub risk: u8,
     pub expanded: Option<&'static str>,
     pub bench: Option<engine::BenchResult>,
+    pub bench_prev: Option<engine::BenchResult>,
     pub emulators: Vec<engine::Emulator>,
     pub procs: Vec<(String, u32, f64)>,
+    pub games: Vec<(&'static str, &'static str)>,
+    pub games_at: f64,
     pub audio: Ambient,
     pub modal: Option<Modal>,
     pub toasts: Vec<Toast>,
@@ -188,8 +191,11 @@ impl App {
             risk: 0,
             expanded: None,
             bench: None,
+            bench_prev: None,
             emulators: Vec::new(),
             procs: Vec::new(),
+            games: Vec::new(),
+            games_at: -20.0,
             audio,
             modal: None,
             toasts: Vec::new(),
@@ -198,7 +204,7 @@ impl App {
             polled_at: -10.0,
             procs_at: -10.0,
             dpi: 800.0,
-            sens: 90.0,
+            sens: 0.9,
             aim_locked: false,
             selftest_report: None,
         }
@@ -303,6 +309,9 @@ impl App {
                 Err(e) => self.toast(2, format!("boost failed · {}", e)),
             },
             Action::Bench => {
+                if let Some(prev) = self.bench {
+                    self.bench_prev = Some(prev);
+                }
                 let r = engine::bench();
                 self.state.push("sys", &format!("bench :: {:.0}", r.score));
                 self.toast(0, format!("bench complete · {:.0}", r.score));
@@ -324,6 +333,10 @@ impl App {
             if self.ram_hist.len() > 80 {
                 self.ram_hist.remove(0);
             }
+        }
+        if self.view == View::Dashboard && now - self.games_at > 10.0 {
+            self.games_at = now;
+            self.games = engine::running_games();
         }
         if self.view == View::Monitor && now - self.procs_at > 6.0 {
             self.procs_at = now;
@@ -349,8 +362,8 @@ impl App {
         ui.painter().text(
             Pos2::new(rect.left(), rect.center().y),
             Align2::LEFT_CENTER,
-            "VOID",
-            num_font(27.0),
+            "V O I D",
+            num_font(23.0),
             TXT,
         );
         // a small pulsing dot next to the wordmark

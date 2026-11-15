@@ -245,6 +245,27 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         });
                     }
                 });
+
+                ui.add_space(18.0);
+                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                    let machine = [
+                        ("host", app.machine.host.clone()),
+                        ("cpu", app.machine.cpu.clone()),
+                        ("gpu", app.machine.gpu.clone()),
+                    ];
+                    for (k, v) in machine {
+                        ui.vertical(|ui| {
+                            theme::micro(ui, k);
+                            ui.add_space(2.0);
+                            ui.add(egui::Label::new(
+                                RichText::new(theme::clip(&v, 30))
+                                    .font(mono_font(10.5))
+                                    .color(DIM),
+                            ));
+                        });
+                        ui.add_space(30.0);
+                    }
+                });
             });
             ui.add_space(12.0);
             theme::ring(ui, coverage, 168.0, "readiness");
@@ -342,6 +363,55 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 });
             },
         );
+    });
+
+    ui.add_space(14.0);
+
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "game watch");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::chip_button(ui, "scan", false).clicked() {
+                    app.games = engine::running_games();
+                    app.toast(
+                        1,
+                        format!("{} recognised", app.games.len()),
+                    );
+                }
+                theme::pill(ui, "live", !app.games.is_empty());
+            });
+        });
+        ui.add_space(10.0);
+        let games: Vec<(&'static str, &'static str)> = app.games.clone();
+        if games.is_empty() {
+            ui.add(egui::Label::new(
+                RichText::new(
+                    "Quiet. VOID re-reads the process table every ten seconds and offers the matching loadout the moment a game starts.",
+                )
+                .font(body_font())
+                .color(FAINT),
+            ));
+        } else {
+            for (name, profile) in games {
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 3.0, WHITE);
+                    ui.add(egui::Label::new(
+                        RichText::new(name).font(label_font()).color(TXT),
+                    ));
+                    ui.add_space(8.0);
+                    theme::pill(ui, profile, false);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if theme::chip_button(ui, "engage", false).clicked() {
+                            let m = confirm_profile(app, profile);
+                            app.modal = Some(m);
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+            }
+        }
     });
 
     ui.add_space(14.0);
