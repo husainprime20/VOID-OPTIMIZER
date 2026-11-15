@@ -9,7 +9,7 @@ on:
     branches: ["**"]
     paths:
       - "src/**"
-      - "assets/ui/**"
+      - ".github/workflows/preview.yml"
 
 permissions:
   contents: write
@@ -31,7 +31,7 @@ jobs:
           sudo apt-get install -y -qq \
             libgl1-mesa-dri libglx-mesa0 libegl1 libglu1-mesa \
             libx11-6 libxcursor1 libxrandr2 libxi6 libxkbcommon0 libxkbcommon-x11-0 \
-            xvfb mesa-utils libasound2t64 || sudo apt-get install -y -qq xvfb mesa-utils
+            xvfb mesa-utils pkg-config libasound2-dev libudev-dev
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -44,7 +44,19 @@ jobs:
           restore-keys: ${{ runner.os }}-preview-
 
       - name: Build with the screenshot backend
-        run: cargo build --release --bin void --features eframe/__screenshot
+        run: |
+          set +e
+          cargo build --release --bin void --features eframe/__screenshot 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            n=0
+            grep -E "^(error|warning: unused)" build.log | head -10 | while IFS= read -r line; do
+              n=$((n+1))
+              echo "::error title=Rust error $n::$line"
+            done
+            grep -A6 -E "^error" build.log | head -40
+            exit "$code"
+          fi
 
       - name: Render every view
         run: |
