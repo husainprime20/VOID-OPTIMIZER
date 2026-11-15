@@ -1,0 +1,161 @@
+name: build
+
+# Builds the Windows executable for VOID.
+#   • every push  → builds a downloadable artifact (no release)
+#   • a v* tag    → builds and publishes a GitHub release with the exe + zip
+#   • manual run  → set `release: true` to also publish
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a GitHub release from this run"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Statically link the MSVC runtime so the exe runs on a clean Windows install
+  # without the VC++ redistributable.
+  RUSTFLAGS: "-C target-feature=+crt-static"
+
+jobs:
+  windows-x64:
+    name: windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          rustc -Vv
+          cargo -V
+
+      # VOID has zero dependencies, so this needs no network and no cache.
+      - name: Build (release)
+        run: cargo build --release
+
+      - name: Smoke test the binary
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          "VOID_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $out = & .\target\release\void.exe --version
+          Write-Host "version output: $out"
+          if ($out -notmatch "void $version") { throw "unexpected --version output: $out" }
+
+          & .\target\release\void.exe catalog > catalog.json
+          $size = (Get-Item catalog.json).Length
+          Write-Host "catalog.json: $size bytes"
+          if ($size -lt 5000) { throw "catalog output looks truncated ($size bytes)" }
+
+          & .\target\release\void.exe status --json | Out-File -Encoding utf8 status.json
+          Write-Host (Get-Content status.json -Raw)
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ver = $env:VOID_VERSION
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\release\void.exe dist\VOID.exe
+          Copy-Item README.md dist\README.md
+
+          @"
+          VOID $ver — competitive gaming optimizer
+          ===========================================
+
+          HOW TO RUN
+          1. Double-click  RUN-AS-ADMIN.bat   (kernel-tier tweaks need elevation)
+             or right-click VOID.exe → "Run as administrator".
+          2. Your browser-engine window opens on http://127.0.0.1:8722
+          3. Press IGNITE, or open Profiles and engage one.
+
+          SAFETY
+          - Nothing runs until you press a button; every command is shown first.
+          - Settings → Dry run prints commands without changing anything.
+          - "Revert all" restores every value VOID touched.
+          - VOID never touches game files, game memory or anti-cheat.
+          - Journal: %APPDATA%\VOID\void.log
+
+          Windows SmartScreen may warn because this build is not code-signed.
+          More info → "Run anyway".
+
+          CLI
+            VOID.exe status --json
+            VOID.exe apply freefire
+            VOID.exe revert
+            VOID.exe bench
+
+          Build from source: https://github.com/${{ github.repository }}
+          "@ | Set-Content -Encoding utf8 dist\READ-ME-FIRST.txt
+
+          @"
+          @echo off
+          rem Launches VOID elevated (the exe has no embedded manifest).
+          powershell -NoProfile -Command "Start-Process -FilePath '%~dp0VOID.exe' -WorkingDirectory '%~dp0' -Verb RunAs"
+          "@ | Set-Content -Encoding ascii dist\RUN-AS-ADMIN.bat
+
+          Compress-Archive -Path dist\* -DestinationPath "VOID-$ver-windows-x64.zip" -Force
+          Get-FileHash "VOID-$ver-windows-x64.zip" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  VOID-$ver-windows-x64.zip" } | Set-Content SHA256SUMS.txt
+          Get-FileHash dist\VOID.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  VOID.exe" } | Add-Content SHA256SUMS.txt
+
+          $kb = [math]::Round((Get-Item dist\VOID.exe).Length / 1KB, 0)
+          Write-Host "VOID.exe: $kb KB"
+          Get-Content SHA256SUMS.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOID-windows-x64
+          path: |
+            dist/VOID.exe
+            VOID-*-windows-x64.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = $env:VOID_VERSION
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $tag = $env:GITHUB_REF -replace 'refs/tags/', ''
+          } else {
+            $tag = "v$ver"
+          }
+          $notes = @"
+          ## VOID $ver — Windows x64
+
+          Zero-dependency competitive gaming optimizer (single exe, no installer, no runtime).
+
+          **Run:** extract, then `RUN-AS-ADMIN.bat` (or right-click `VOID.exe` → Run as administrator).
+
+          - 42 documented, reversible tweaks · 7 profiles
+          - Free Fire / FF Max: emulator priority, physical-core pinning, low-latency net stack
+          - Kernel tier: high-resolution timer, TSC policy, HAGS, scheduler bias
+          - Ambient audio engine, live telemetry, jitter benchmark, eDPI lab
+          - Everything is visible before it runs, and every change can be reverted
+
+          Built from `$env:GITHUB_SHA` on GitHub Actions (windows-latest, static CRT).
+          "@
+          gh release create $tag `
+            --target main `
+            --title "VOID $ver" `
+            --notes $notes `
+            "dist/VOID.exe" `
+            "VOID-$ver-windows-x64.zip" `
+            "SHA256SUMS.txt"
