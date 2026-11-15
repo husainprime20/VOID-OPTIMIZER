@@ -7,7 +7,30 @@ One Rust binary. Zero dependencies. Every lever documented, every change reversi
 
 `v0.1.0` · Windows tweaks · Free Fire / FF Max tuned · monochrome UI · ambient engine
 
+[![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
+[![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
+
 </div>
+
+---
+
+## Download
+
+**[⬇ VOID.exe — v0.1.0](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest/download/VOID.exe)** · 588 KB · Windows 10/11 x64
+&nbsp;·&nbsp; [portable zip + `RUN-AS-ADMIN.bat` + checksums](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
+
+```
+1. download VOID.exe
+2. right-click → Run as administrator     (kernel-tier tweaks need elevation)
+3. a window opens on http://127.0.0.1:8722 → press IGNITE
+```
+
+* Single file. No installer, no runtime, no dependencies, no telemetry.
+* Static CRT — no Visual C++ redistributable needed.
+* Not code-signed: SmartScreen asks once → **More info** → **Run anyway**.
+* `SHA256SUMS.txt` ships with every release.
+* Every release is built by GitHub Actions on `windows-latest` and the binary is **executed**
+  (`--version`, full catalog dump) before publishing — a release cannot contain a broken exe.
 
 ---
 
@@ -18,7 +41,7 @@ It modifies *Windows* — power, kernel timers, scheduler bias, GPU frame path, 
 input stack — through the official `powercfg` / `bcdedit` / `reg` / `netsh` / `sc` / `fsutil`
 interfaces, and it tells you exactly which command it will run *before* it runs it.
 
-It ships as a **single ~1.5 MB executable with no dependencies at all** — not a single crate
+It ships as a **single 588 KB executable with no dependencies at all** — not a single crate
 in `Cargo.toml`. The interface is HTML/CSS/JS compiled into the binary with `include_str!`
 and served on localhost; the Rust core is the engine, the router and the API.
 
@@ -29,7 +52,7 @@ and served on localhost; the Rust core is the engine, the router and the API.
 
 ---
 
-## Quick start (Windows)
+## Build from source (Windows)
 
 ```bat
 :: 1. install Rust (one command, no admin) — https://rustup.rs
@@ -39,6 +62,10 @@ build.bat
 :: 3. run it elevated (kernel-tier tweaks need it)
 run-admin.bat
 ```
+
+Releasing is one commit: put `[release]` in the message (or push a `v*` tag) and the workflow
+builds, smoke-tests and publishes `VOID.exe` + zip + `SHA256SUMS.txt` to a GitHub release
+targeted at `main`.
 
 `build.bat` produces `void.exe`. Drop it anywhere — it is fully portable. Settings and the
 journal live in `%APPDATA%\VOID\`.
