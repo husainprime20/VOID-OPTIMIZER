@@ -553,7 +553,7 @@ pub static TWEAKS: &[Tweak] = &[
     },
     Tweak {
         id: "net.responsiveness",
-        name: "System Responsiveness → 10",
+        name: "System Responsiveness to 10",
         cat: "net",
         desc: "Drops the reserved share for background multimedia tasks to 10%.",
         why: "Windows reserves 20% by default. You want that slice in the game.",
@@ -865,7 +865,7 @@ pub static TWEAKS: &[Tweak] = &[
     // ───────────────────────── FREE FIRE ─────────────────────────
     Tweak {
         id: "ff.priority",
-        name: "Emulator → HIGH Priority",
+        name: "Emulator High Priority",
         cat: "freefire",
         desc: "Raises the priority class of a running Android emulator (BlueStacks, LDPlayer, MuMu, MEmu, Nox) to High.",
         why: "Free Fire inside an emulator fights Windows for CPU. This ends the argument.",

@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.2.0` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
+`v0.2.1` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -37,6 +37,19 @@ A native desktop app — one window, drawn on the GPU. Engine in-process, every 
 
 ---
 
+---
+
+## Screenshots
+
+Rendered from the real binary, head-lessly, by CI on every push (`docs/shots/`):
+
+| | |
+|---|---|
+| ![dashboard](docs/shots/dashboard.png) | ![optimizer](docs/shots/optimize.png) |
+| ![profiles](docs/shots/profiles.png) | ![free fire](docs/shots/freefire.png) |
+| ![network](docs/shots/network.png) | ![monitor](docs/shots/monitor.png) |
+| ![aim lab](docs/shots/aim.png) | ![settings](docs/shots/settings.png) |
+
 ## What VOID is
 
 VOID is a **desktop performance toolkit for people who care about the last 3 milliseconds**.
@@ -60,11 +73,12 @@ documented way back.
 | **04 Free Fire** | detects BlueStacks / LDPlayer / MuMu / MEmu / Nox / GameLoop, launches and boosts them |
 | **05 Network** | Nagle off, MMCSS Games task, throttling index, DNS flush, queue-shape sketch |
 | **06 Kernel** | timer resolution, TSC sync, HAGS, `Win32PrioritySeparation`, VBS, core parking |
-| **07 Monitor** | 1-second telemetry, sleep-jitter benchmark (avg/p50/p95/max/score), process list with boost |
+| **07 Monitor** | 1-second telemetry, sleep-jitter benchmark (avg/p50/p95/max/score + delta vs previous run), process list with boost |
+| **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
-### New in 0.2.0
+### What's new
 
 * **Native window.** The whole UI was re-implemented in Rust on `egui` — no HTML, no CSS,
   no HTTP server, no Chromium runtime.
@@ -74,8 +88,9 @@ documented way back.
   bell every ~11 s. Three presets — *Nocturne*, *Aurora*, *Cosmos* — with a volume slider.
 * **Applied stack persists.** Reopen the app and it still knows what it changed.
 * **Dry run is honest.** In dry-run, a tweak is logged and shown but never marked applied.
-* **New:** process boost, emulator detection + one-click boost, jitter panel, eDPI lab,
-  restore point from any view.
+* **New:** game watch (recognises a running game and offers the matching loadout),
+  process boost, emulator detection + one-click boost, jitter panel with delta vs the
+  previous run, eDPI/360° lab, restore point from any view.
 
 ---
 

@@ -111,14 +111,14 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
             ui.add_space(8.0);
             for a in t.apply.iter() {
                 ui.add(egui::Label::new(
-                    RichText::new(format!("→ {}", catalog::action_text(a)))
+                    RichText::new(format!("-> {}", catalog::action_text(a)))
                         .font(mono_font(10.5))
                         .color(FAINT),
                 ));
             }
             for a in t.revert.iter() {
                 ui.add(egui::Label::new(
-                    RichText::new(format!("← {}", catalog::action_text(a)))
+                    RichText::new(format!("<- {}", catalog::action_text(a)))
                         .font(mono_font(10.5))
                         .color(GHOST),
                 ));
@@ -163,6 +163,7 @@ pub fn by_category(app: &mut App, ui: &mut Ui, cat: &'static str) {
 fn stat_card(ui: &mut Ui, label: &str, value: String, unit: &str, hist: &[f32], max: f32) {
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
+        ui.set_min_height(98.0);
         theme::micro(ui, label);
         ui.add_space(4.0);
         ui.horizontal(|ui| {
@@ -193,7 +194,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
 
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
+        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
             ui.vertical(|ui| {
                 ui.set_width((ui.available_width() - 200.0).max(320.0));
                 theme::micro(ui, "catalog coverage");
@@ -244,6 +245,27 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         });
                     }
                 });
+
+                ui.add_space(18.0);
+                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                    let machine = [
+                        ("host", app.machine.host.clone()),
+                        ("cpu", app.machine.cpu.clone()),
+                        ("gpu", app.machine.gpu.clone()),
+                    ];
+                    for (k, v) in machine {
+                        ui.vertical(|ui| {
+                            theme::micro(ui, k);
+                            ui.add_space(2.0);
+                            ui.add(egui::Label::new(
+                                RichText::new(theme::clip(&v, 30))
+                                    .font(mono_font(10.5))
+                                    .color(DIM),
+                            ));
+                        });
+                        ui.add_space(30.0);
+                    }
+                });
             });
             ui.add_space(12.0);
             theme::ring(ui, coverage, 168.0, "readiness");
@@ -256,7 +278,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     let w = ui.available_width();
     let gap = 10.0;
     let cw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = gap;
         ui.allocate_ui_with_layout(
             Vec2::new(cw, 0.0),
@@ -295,6 +317,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.set_width(cw);
                 theme::card(ui, |ui| {
                     ui.set_width(ui.available_width());
+                    ui.set_min_height(98.0);
                     theme::micro(ui, "sleep jitter");
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -323,6 +346,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.set_width(cw);
                 theme::card(ui, |ui| {
                     ui.set_width(ui.available_width());
+                    ui.set_min_height(98.0);
                     theme::micro(ui, "session");
                     ui.add_space(4.0);
                     let up = app.started.elapsed().as_secs();
@@ -343,14 +367,68 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
 
     ui.add_space(14.0);
 
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "game watch");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::chip_button(ui, "scan", false).clicked() {
+                    app.games = engine::running_games();
+                    app.toast(
+                        1,
+                        format!("{} recognised", app.games.len()),
+                    );
+                }
+                theme::pill(
+                    ui,
+                    if app.games.is_empty() { "watching" } else { "live" },
+                    !app.games.is_empty(),
+                );
+            });
+        });
+        ui.add_space(10.0);
+        let games: Vec<(&'static str, &'static str)> = app.games.clone();
+        if games.is_empty() {
+            ui.add(egui::Label::new(
+                RichText::new(
+                    "Quiet. VOID re-reads the process table every ten seconds and offers the matching loadout the moment a game starts.",
+                )
+                .font(body_font())
+                .color(FAINT),
+            ));
+        } else {
+            for (name, profile) in games {
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 3.0, WHITE);
+                    ui.add(egui::Label::new(
+                        RichText::new(name).font(label_font()).color(TXT),
+                    ));
+                    ui.add_space(8.0);
+                    theme::pill(ui, profile, false);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if theme::chip_button(ui, "engage", false).clicked() {
+                            let m = confirm_profile(app, profile);
+                            app.modal = Some(m);
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+            }
+        }
+    });
+
+    ui.add_space(14.0);
+
     let w = ui.available_width();
     let half = (w - 12.0) * 0.5;
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
+                ui.set_min_height(148.0);
                 ui.horizontal(|ui| {
                     theme::micro(ui, "applied stack");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -380,6 +458,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
+                ui.set_min_height(148.0);
                 ui.horizontal(|ui| {
                     theme::micro(ui, "journal");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -484,7 +563,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
     let w = ui.available_width();
     let half = (w - 12.0) * 0.5;
 
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
@@ -545,8 +624,11 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 });
                 if let Some(err) = &app.audio.error {
                     ui.add_space(8.0);
+                    let short: String = err.chars().take(78).collect();
                     ui.add(egui::Label::new(
-                        RichText::new(err).font(mono_font(10.0)).color(FAINT),
+                        RichText::new(format!("audio: {}", short))
+                            .font(mono_font(10.0))
+                            .color(GHOST),
                     ));
                 }
             });
@@ -663,7 +745,10 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
     ui.add_space(16.0);
     section(ui, "about", |ui| {
         ui.add(egui::Label::new(
-            RichText::new("VOID 0.2.0 — native desktop build. Engine in-process, no localhost bridge, no browser runtime.")
+            RichText::new(format!(
+                "VOID {} — native desktop build. Engine in-process, no localhost bridge, no browser runtime.",
+                engine::VERSION
+            ))
                 .font(body_font())
                 .color(FAINT),
         ));

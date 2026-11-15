@@ -407,7 +407,7 @@ pub fn power_plan() -> String {
     }
 }
 
-/// `tasklist` → (image name, pid, working set in MB), sorted by memory.
+/// `tasklist` -> (image name, pid, working set in MB), sorted by memory.
 pub fn processes() -> Vec<(String, u32, f64)> {
     let mut out: Vec<(String, u32, f64)> = Vec::new();
     if !cfg!(windows) {
@@ -463,7 +463,7 @@ pub fn set_priority(pid: u32, class: &str) -> Result<String, String> {
         Ok(o) => {
             let s = o.combined();
             if s.contains("ok") {
-                Ok(format!("{} → {}", pid, class))
+                Ok(format!("{} -> {}", pid, class))
             } else {
                 Err(s)
             }

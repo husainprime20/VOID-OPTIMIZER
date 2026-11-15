@@ -14,7 +14,7 @@ use std::fs;
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -225,13 +225,13 @@ fn do_cmd(state: &State, program: &str, args: &[&str]) -> (bool, String) {
             } else {
                 let extra = first_line(&o.combined());
                 if extra.is_empty() {
-                    (false, format!("{} → exit {}", shown, o.code))
+                    (false, format!("{} -> exit {}", shown, o.code))
                 } else {
-                    (false, format!("{} → exit {} · {}", shown, o.code, extra))
+                    (false, format!("{} -> exit {} · {}", shown, o.code, extra))
                 }
             }
         }
-        Err(e) => (false, format!("{} → {}", shown, e)),
+        Err(e) => (false, format!("{} -> {}", shown, e)),
     }
 }
 
@@ -244,7 +244,7 @@ fn do_cmd_lenient(state: &State, program: &str, args: &[&str]) -> (bool, String)
     }
     match platform::run(program, args) {
         Ok(_) => (true, shown),
-        Err(e) => (true, format!("{} → {}", shown, e)),
+        Err(e) => (true, format!("{} -> {}", shown, e)),
     }
 }
 
@@ -259,10 +259,10 @@ fn do_ps(state: &State, script: &str, label: &str) -> (bool, String) {
             if o.ok {
                 (true, format!("{} :: {}", label, out))
             } else {
-                (false, format!("{} → {}", label, out))
+                (false, format!("{} -> {}", label, out))
             }
         }
-        Err(e) => (false, format!("{} → {}", label, e)),
+        Err(e) => (false, format!("{} -> {}", label, e)),
     }
 }
 
@@ -307,7 +307,7 @@ fn run_special(state: &mut State, name: &str, revert: bool) -> (bool, String) {
                 thread::sleep(Duration::from_millis(55));
                 return (
                     true,
-                    "simulated :: powercfg -duplicatescheme <ultimate> → powercfg -setactive <new guid>"
+                    "simulated :: powercfg -duplicatescheme <ultimate> -> powercfg -setactive <new guid>"
                         .to_string(),
                 );
             }
@@ -320,17 +320,17 @@ fn run_special(state: &mut State, name: &str, revert: bool) -> (bool, String) {
                     match platform::run("powercfg", &["-setactive", guid.as_str()]) {
                         Ok(o2) => (
                             o2.ok,
-                            format!("ultimate performance → {}", first_line(&o2.combined())),
+                            format!("ultimate performance -> {}", first_line(&o2.combined())),
                         ),
-                        Err(e) => (false, format!("powercfg -setactive → {}", e)),
+                        Err(e) => (false, format!("powercfg -setactive -> {}", e)),
                     }
                 }
-                Err(e) => (false, format!("powercfg → {}", e)),
+                Err(e) => (false, format!("powercfg -> {}", e)),
             }
         }
         "power_reapply" => {
             let (ok, msg) = do_cmd(state, "powercfg", &["-setactive", "SCHEME_CURRENT"]);
-            (ok, format!("scheme re-applied → {}", first_line(&msg)))
+            (ok, format!("scheme re-applied -> {}", first_line(&msg)))
         }
         "net_nagle_off" => net_nagle(state, revert),
         "net_nagle_reset" => net_nagle(state, true),
@@ -453,7 +453,7 @@ fn net_congestion(state: &mut State, revert: bool) -> (bool, String) {
             ],
         );
         if ok {
-            return (true, format!("congestion provider → default ({})", first_line(&msg)));
+            return (true, format!("congestion provider -> default ({})", first_line(&msg)));
         }
         let (ok2, msg2) = do_cmd(
             state,
@@ -467,7 +467,7 @@ fn net_congestion(state: &mut State, revert: bool) -> (bool, String) {
                 "congestionprovider=default",
             ],
         );
-        return (ok2, format!("congestion provider → default ({})", first_line(&msg2)));
+        return (ok2, format!("congestion provider -> default ({})", first_line(&msg2)));
     }
     let tries: [&[&str]; 3] = [
         &[
@@ -499,7 +499,7 @@ fn net_congestion(state: &mut State, revert: bool) -> (bool, String) {
     for args in tries.iter() {
         let (ok, msg) = do_cmd(state, "netsh", *args);
         if ok {
-            return (true, format!("congestion provider → {}", msg));
+            return (true, format!("congestion provider -> {}", msg));
         }
         last = msg;
     }
@@ -1037,6 +1037,45 @@ pub fn boost_emulator() -> Result<String, String> {
 
 pub fn launch_emulator(path: &str) -> Result<String, String> {
     platform::spawn_detached(path).map(|_| "launcher started".to_string())
+}
+
+/// Games VOID recognises by process name, with the loadout it recommends.
+/// Nothing is launched, injected or hooked — this is a name match on `tasklist`.
+pub const GAMES: &[(&str, &str, &str)] = &[
+    ("cs2.exe", "Counter-Strike 2", "competitive"),
+    ("valorant.exe", "Valorant", "competitive"),
+    ("valorant-win64-shipping.exe", "Valorant", "competitive"),
+    ("r5apex.exe", "Apex Legends", "competitive"),
+    ("rainbowsix.exe", "Rainbow Six Siege", "competitive"),
+    ("fortniteclient-win64-shipping.exe", "Fortnite", "competitive"),
+    ("modernwarfare.exe", "Call of Duty", "competitive"),
+    ("destiny2.exe", "Destiny 2", "competitive"),
+    ("gta5.exe", "GTA V", "gpu"),
+    ("hd-player.exe", "Free Fire (BlueStacks)", "freefire"),
+    ("dnplayer.exe", "Free Fire (LDPlayer)", "freefire"),
+    ("mumuplayer.exe", "Free Fire (MuMu)", "freefire"),
+    ("memu.exe", "Free Fire (MEmu)", "freefire"),
+    ("gameloop.exe", "Free Fire (GameLoop)", "freefire"),
+    ("javaw.exe", "Minecraft", "stream"),
+    ("obs64.exe", "OBS Studio", "stream"),
+];
+
+/// (game, profile) for every recognised game currently in the process table.
+pub fn running_games() -> Vec<(&'static str, &'static str)> {
+    if !platform::is_windows() {
+        return Vec::new();
+    }
+    let procs: Vec<String> = platform::processes()
+        .into_iter()
+        .map(|(n, _, _)| n.to_lowercase())
+        .collect();
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for (exe, name, profile) in GAMES.iter() {
+        if procs.iter().any(|p| p == exe) && !out.iter().any(|(n, _)| n == name) {
+            out.push((name, profile));
+        }
+    }
+    out
 }
 
 pub fn processes() -> Vec<(String, u32, f64)> {

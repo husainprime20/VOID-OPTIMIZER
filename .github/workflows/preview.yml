@@ -1,0 +1,84 @@
+name: preview
+
+# Renders the native window head-lessly (Xvfb + Mesa llvmpipe) and commits the
+# screenshots to docs/shots/. This is the only way to look at an egui window
+# without a display, and it keeps the design honest.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["**"]
+    paths:
+      - "src/**"
+      - ".github/workflows/preview.yml"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  shots:
+    name: render views
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install GL + Xvfb
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libgl1-mesa-dri libglx-mesa0 libegl1 libglu1-mesa \
+            libx11-6 libxcursor1 libxrandr2 libxi6 libxkbcommon0 libxkbcommon-x11-0 \
+            xvfb mesa-utils pkg-config libasound2-dev libudev-dev
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-preview-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-preview-
+
+      - name: Build with the screenshot backend
+        run: |
+          set +e
+          cargo build --release --bin void --features eframe/__screenshot 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            n=0
+            grep -E "^(error|warning: unused)" build.log | head -10 | while IFS= read -r line; do
+              n=$((n+1))
+              echo "::error title=Rust error $n::$line"
+            done
+            grep -A6 -E "^error" build.log | head -40
+            exit "$code"
+          fi
+
+      - name: Render every view
+        run: |
+          mkdir -p docs/shots
+          for v in dashboard optimize profiles freefire network kernel monitor aim settings; do
+            echo "→ $v"
+            VOID_VIEW=$v \
+            EFRAME_SCREENSHOT_TO="docs/shots/$v.png" \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            timeout 90 xvfb-run -a -s "-screen 0 1600x1000x24" ./target/release/void || echo "  (view $v failed)"
+            ls -la "docs/shots/$v.png" 2>/dev/null || true
+          done
+          ls -la docs/shots/
+
+      - name: Commit the screenshots
+        run: |
+          git config user.name "void-preview"
+          git config user.email "actions@github.com"
+          git add docs/shots
+          if git diff --cached --quiet; then
+            echo "no visual change"
+            exit 0
+          fi
+          git commit -m "design: refresh native UI screenshots [skip ci]"
+          git push

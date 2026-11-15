@@ -58,7 +58,11 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 ui.add(egui::Label::new(
                     RichText::new(&name).font(label_font()).color(if installed { TXT } else { GHOST }),
                 ));
-                ui.add_space(6.0);
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    RichText::new(path).font(mono_font(9.5)).color(GHOST),
+                ));
+                ui.add_space(8.0);
                 theme::pill(
                     ui,
                     if running {
@@ -91,7 +95,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
 
     ui.add_space(14.0);
 
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         let w = ui.available_width();
         let half = (w - 12.0) * 0.5;
@@ -151,7 +155,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
     let gap = 12.0;
     let third = (w - gap * 2.0) / 3.0;
 
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = gap;
 
         for (label, value, unit, hist) in [
@@ -252,7 +256,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
             Some(b) => {
                 let w = ui.available_width();
                 let cw = (w - 4.0 * 8.0) / 5.0;
-                ui.horizontal(|ui| {
+                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     for (k, v, unit) in [
                         ("avg", format!("{:.2}", b.avg), "ms"),
@@ -280,9 +284,16 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                     }
                 });
                 ui.add_space(6.0);
+                let delta = match app.bench_prev {
+                    Some(p) => format!(" · {:+.2} ms vs previous run", b.jitter - p.jitter),
+                    None => String::new(),
+                };
                 theme::micro(
                     ui,
-                    &format!("{} samples · one sleep(1ms) each · overshoot = jitter", b.samples),
+                    &format!(
+                        "{} samples · one sleep(1ms) each · overshoot = jitter{}",
+                        b.samples, delta
+                    ),
                 );
             }
             None => {
@@ -312,8 +323,13 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
 
         let rows: Vec<(String, u32, f64)> = app.procs.iter().take(12).cloned().collect();
         if rows.is_empty() {
+            let msg = if cfg!(windows) {
+                "Reading the process table…"
+            } else {
+                "The process table is Windows-only. This build is running in simulation mode."
+            };
             ui.add(egui::Label::new(
-                RichText::new("Reading the process table…").font(body_font()).color(FAINT),
+                RichText::new(msg).font(body_font()).color(FAINT),
             ));
         }
         for (name, pid, mem) in rows {
@@ -353,7 +369,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
         0.0
     };
 
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         let w = ui.available_width();
         let half = (w - 12.0) * 0.5;
@@ -382,7 +398,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
 
                 stepper(ui, "dpi", &mut app.dpi, 50.0, 100.0, 25600.0);
                 ui.add_space(8.0);
-                stepper(ui, "sensitivity", &mut app.sens, 1.0, 1.0, 1000.0);
+                stepper(ui, "sensitivity", &mut app.sens, 0.05, 0.05, 5.0);
 
                 ui.add_space(14.0);
                 ui.horizontal(|ui| {
@@ -394,7 +410,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
                     }
                     if theme::chip_button(ui, "reset", false).clicked() {
                         app.dpi = 800.0;
-                        app.sens = 90.0;
+                        app.sens = 0.9;
                     }
                 });
             });
@@ -434,7 +450,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
 
     ui.add_space(14.0);
 
-    ui.horizontal(|ui| {
+    ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         let w = ui.available_width();
         let half = (w - 12.0) * 0.5;
@@ -504,10 +520,13 @@ fn stepper(ui: &mut Ui, label: &str, value: &mut f32, step: f32, min: f32, max: 
                 *value = (*value + step).min(max);
             }
             ui.add_space(4.0);
+            let shown = if step < 1.0 {
+                format!("{:.2}", *value)
+            } else {
+                format!("{:.0}", *value)
+            };
             ui.add(egui::Label::new(
-                RichText::new(format!("{:.0}", *value))
-                    .font(mono_font(13.0))
-                    .color(TXT),
+                RichText::new(shown).font(mono_font(13.0)).color(TXT),
             ));
             ui.add_space(4.0);
             if theme::chip_button(ui, "-", false).clicked() {

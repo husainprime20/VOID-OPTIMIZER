@@ -153,7 +153,7 @@ pub fn profiles(app: &mut App, ui: &mut Ui) {
     let profiles = catalog::PROFILES;
     let mut i = 0;
     while i < profiles.len() {
-        ui.horizontal(|ui| {
+        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
             ui.spacing_mut().item_spacing.x = gap;
             for _ in 0..2 {
                 if i >= profiles.len() {
@@ -238,7 +238,7 @@ fn profile_card(app: &mut App, ui: &mut Ui, p: &'static catalog::Profile) {
 pub fn network(app: &mut App, ui: &mut Ui) {
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
+        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
             ui.vertical(|ui| {
                 ui.set_width((ui.available_width() - 250.0).max(320.0));
                 theme::micro(ui, "sleep jitter");
@@ -309,7 +309,7 @@ pub fn network(app: &mut App, ui: &mut Ui) {
 pub fn kernel(app: &mut App, ui: &mut Ui) {
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
+        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
             ui.vertical(|ui| {
                 ui.set_width((ui.available_width() - 250.0).max(320.0));
                 theme::micro(ui, "timer resolution");
