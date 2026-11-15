@@ -379,7 +379,11 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         format!("{} recognised", app.games.len()),
                     );
                 }
-                theme::pill(ui, "live", !app.games.is_empty());
+                theme::pill(
+                    ui,
+                    if app.games.is_empty() { "watching" } else { "live" },
+                    !app.games.is_empty(),
+                );
             });
         });
         ui.add_space(10.0);
@@ -741,7 +745,10 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
     ui.add_space(16.0);
     section(ui, "about", |ui| {
         ui.add(egui::Label::new(
-            RichText::new("VOID 0.2.0 — native desktop build. Engine in-process, no localhost bridge, no browser runtime.")
+            RichText::new(format!(
+                "VOID {} — native desktop build. Engine in-process, no localhost bridge, no browser runtime.",
+                engine::VERSION
+            ))
                 .font(body_font())
                 .color(FAINT),
         ));

@@ -14,7 +14,7 @@ use std::fs;
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";
 
 // ───────────────────────────── machine ─────────────────────────────
 

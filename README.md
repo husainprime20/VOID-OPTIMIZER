@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.2.0` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
+`v0.2.1` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -78,7 +78,7 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
-### New in 0.2.0
+### What's new
 
 * **Native window.** The whole UI was re-implemented in Rust on `egui` — no HTML, no CSS,
   no HTTP server, no Chromium runtime.
@@ -88,8 +88,9 @@ documented way back.
   bell every ~11 s. Three presets — *Nocturne*, *Aurora*, *Cosmos* — with a volume slider.
 * **Applied stack persists.** Reopen the app and it still knows what it changed.
 * **Dry run is honest.** In dry-run, a tweak is logged and shown but never marked applied.
-* **New:** process boost, emulator detection + one-click boost, jitter panel, eDPI lab,
-  restore point from any view.
+* **New:** game watch (recognises a running game and offers the matching loadout),
+  process boost, emulator detection + one-click boost, jitter panel with delta vs the
+  previous run, eDPI/360° lab, restore point from any view.
 
 ---
 
