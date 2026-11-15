@@ -260,7 +260,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
         ui.spacing_mut().item_spacing.x = gap;
         ui.allocate_ui_with_layout(
             Vec2::new(cw, 0.0),
-            Layout::top_down(Align::MIN),
+            Layout::top_down(Align::Min),
             |ui| {
                 ui.set_width(cw);
                 stat_card(
@@ -275,7 +275,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
         );
         ui.allocate_ui_with_layout(
             Vec2::new(cw, 0.0),
-            Layout::top_down(Align::MIN),
+            Layout::top_down(Align::Min),
             |ui| {
                 ui.set_width(cw);
                 stat_card(
@@ -290,7 +290,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
         );
         ui.allocate_ui_with_layout(
             Vec2::new(cw, 0.0),
-            Layout::top_down(Align::MIN),
+            Layout::top_down(Align::Min),
             |ui| {
                 ui.set_width(cw);
                 theme::card(ui, |ui| {
@@ -318,7 +318,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
         );
         ui.allocate_ui_with_layout(
             Vec2::new(cw, 0.0),
-            Layout::top_down(Align::MIN),
+            Layout::top_down(Align::Min),
             |ui| {
                 ui.set_width(cw);
                 theme::card(ui, |ui| {
@@ -347,7 +347,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     let half = (w - 12.0) * 0.5;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -376,7 +376,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 }
             });
         });
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -486,7 +486,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
 
             theme::card(ui, |ui| {
@@ -589,7 +589,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
             });
         });
 
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
 
             theme::card(ui, |ui| {

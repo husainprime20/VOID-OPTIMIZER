@@ -1,5 +1,9 @@
 //! The VOID engine: state, catalog serialisation, apply/revert, telemetry.
 
+// The console companion only uses part of the engine; the native app uses all
+// of it. Warnings about one binary not touching a helper are just noise.
+#![allow(dead_code)]
+
 pub mod catalog;
 
 use crate::json;

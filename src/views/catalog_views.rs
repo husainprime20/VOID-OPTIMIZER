@@ -162,7 +162,7 @@ pub fn profiles(app: &mut App, ui: &mut Ui) {
                 let p = &profiles[i];
                 ui.allocate_ui_with_layout(
                     Vec2::new(cw, 0.0),
-                    Layout::top_down(Align::MIN),
+                    Layout::top_down(Align::Min),
                     |ui| {
                         ui.set_width(cw);
                         profile_card(app, ui, p);

@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use eframe::egui::{self, Align, Align2, Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Align2, Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::audio::Ambient;
 use crate::engine::{self, Machine, State, Stats};

@@ -95,7 +95,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
         ui.spacing_mut().item_spacing.x = 12.0;
         let w = ui.available_width();
         let half = (w - 12.0) * 0.5;
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -113,7 +113,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 }
             });
         });
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -170,7 +170,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
         ] {
             ui.allocate_ui_with_layout(
                 Vec2::new(third, 0.0),
-                Layout::top_down(Align::MIN),
+                Layout::top_down(Align::Min),
                 |ui| {
                     ui.set_width(third);
                     theme::card(ui, |ui| {
@@ -194,7 +194,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
 
         ui.allocate_ui_with_layout(
             Vec2::new(third, 0.0),
-            Layout::top_down(Align::MIN),
+            Layout::top_down(Align::Min),
             |ui| {
                 ui.set_width(third);
                 theme::card(ui, |ui| {
@@ -263,7 +263,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                     ] {
                         ui.allocate_ui_with_layout(
                             Vec2::new(cw, 0.0),
-                            Layout::top_down(Align::MIN),
+                            Layout::top_down(Align::Min),
                             |ui| {
                                 ui.set_width(cw);
                                 theme::micro(ui, k);
@@ -358,7 +358,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
         let w = ui.available_width();
         let half = (w - 12.0) * 0.5;
 
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -400,7 +400,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
             });
         });
 
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -438,7 +438,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
         ui.spacing_mut().item_spacing.x = 12.0;
         let w = ui.available_width();
         let half = (w - 12.0) * 0.5;
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -473,7 +473,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
             });
         });
 
-        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::MIN), |ui| {
+        ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
