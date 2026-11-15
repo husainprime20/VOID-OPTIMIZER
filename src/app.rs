@@ -164,8 +164,20 @@ impl App {
             audio.play();
         }
         let stats = Stats::default();
+        // Lets CI render a specific view head-lessly (see .github/workflows/preview.yml)
+        let view = match std::env::var("VOID_VIEW").unwrap_or_default().as_str() {
+            "optimize" => View::Optimize,
+            "profiles" => View::Profiles,
+            "freefire" => View::FreeFire,
+            "network" => View::Network,
+            "kernel" => View::Kernel,
+            "monitor" => View::Monitor,
+            "aim" => View::Aim,
+            "settings" => View::Settings,
+            _ => View::Dashboard,
+        };
         Self {
-            view: View::Dashboard,
+            view,
             state,
             machine,
             stats,
