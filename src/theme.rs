@@ -84,22 +84,22 @@ pub fn install(ctx: &egui::Context) {
     v.window_rounding = 16.0.into();
     v.menu_rounding = 12.0.into();
     v.selection.bg_fill = a(WHITE, 40);
-    v.selection.stroke = Stroke::new(1.0, TXT);
+    v.selection.stroke = Stroke::new(1.0_f32, TXT);
     v.widgets.noninteractive.bg_fill = INK;
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, DIM);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, LINE);
+    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, DIM);
     v.widgets.inactive.bg_fill = INK2;
     v.widgets.inactive.weak_bg_fill = INK2;
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0, LINE2);
-    v.widgets.inactive.fg_stroke = Stroke::new(1.0, TXT);
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, LINE2);
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TXT);
     v.widgets.hovered.bg_fill = INK2;
     v.widgets.hovered.weak_bg_fill = INK2;
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, a(WHITE, 90));
-    v.widgets.hovered.fg_stroke = Stroke::new(1.0, WHITE);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, a(WHITE, 90));
+    v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, WHITE);
     v.widgets.active.bg_fill = INK2;
     v.widgets.active.weak_bg_fill = INK2;
-    v.widgets.active.bg_stroke = Stroke::new(1.0, WHITE);
-    v.widgets.active.fg_stroke = Stroke::new(1.0, WHITE);
+    v.widgets.active.bg_stroke = Stroke::new(1.0_f32, WHITE);
+    v.widgets.active.fg_stroke = Stroke::new(1.0_f32, WHITE);
     style.visuals = v;
 
     ctx.set_style(style);
@@ -141,7 +141,7 @@ pub fn card_styled<R>(
 ) -> R {
     let frame = egui::Frame::none()
         .fill(INK)
-        .stroke(Stroke::new(1.0, LINE))
+        .stroke(Stroke::new(1.0_f32, LINE))
         .rounding(rounding)
         .inner_margin(egui::Margin::same(pad));
 
@@ -152,7 +152,7 @@ pub fn card_styled<R>(
 pub fn hot_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let frame = egui::Frame::none()
         .fill(INK)
-        .stroke(Stroke::new(1.0, LINE))
+        .stroke(Stroke::new(1.0_f32, LINE))
         .rounding(18.0)
         .inner_margin(egui::Margin::same(18.0));
     let inner = frame.show(ui, add);
@@ -160,7 +160,7 @@ pub fn hot_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         ui.painter().rect_stroke(
             inner.response.rect,
             18.0,
-            Stroke::new(1.0, LINE2),
+            Stroke::new(1.0_f32, LINE2),
         );
     }
     inner.inner
@@ -177,7 +177,7 @@ pub fn pill(ui: &mut Ui, text: &str, lit: bool) {
     ui.painter().rect_filled(rect, size.y * 0.5, fill);
     if !lit {
         ui.painter()
-            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0, LINE2));
+            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, LINE2));
     }
     ui.painter().text(
         rect.center(),
@@ -217,7 +217,7 @@ pub fn button(ui: &mut Ui, text: &str, primary: bool) -> Response {
         ui.painter().rect_stroke(
             rect,
             9.0,
-            Stroke::new(1.0, if t > 0.02 { LINE2 } else { LINE }),
+            Stroke::new(1.0_f32, if t > 0.02 { LINE2 } else { LINE }),
         );
         ui.painter()
             .text(rect.center(), Align2::CENTER_CENTER, text, font, TXT);
@@ -248,7 +248,7 @@ pub fn chip_button(ui: &mut Ui, text: &str, armed: bool) -> Response {
     ui.painter().rect_filled(rect, size.y * 0.5, fill);
     if !armed {
         ui.painter()
-            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0, LINE));
+            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, LINE));
     }
     ui.painter().text(
         rect.center(),
@@ -279,7 +279,7 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
     ui.painter().rect_filled(rect, 11.0, track);
     if !*on {
         ui.painter()
-            .rect_stroke(rect, 11.0, Stroke::new(1.0, LINE2));
+            .rect_stroke(rect, 11.0, Stroke::new(1.0_f32, LINE2));
     }
     let r = 8.0;
     let cx = lerp(rect.left() + r + 3.0, rect.right() - r - 3.0, t);
@@ -332,7 +332,7 @@ pub fn ring(ui: &mut Ui, pct: f32, size: f32, caption: &str) {
     let c = rect.center();
     let r = size * 0.5 - 10.0;
     let p = ui.painter();
-    p.circle_stroke(c, r, Stroke::new(1.0, LINE));
+    p.circle_stroke(c, r, Stroke::new(1.0_f32, LINE));
 
     let sweep = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
     let steps = 96;
@@ -345,7 +345,7 @@ pub fn ring(ui: &mut Ui, pct: f32, size: f32, caption: &str) {
         let ang = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::TAU;
         let pt = Pos2::new(c.x + r * ang.cos(), c.y + r * ang.sin());
         if let Some(q) = prev {
-            p.line_segment([q, pt], Stroke::new(2.0, a(WHITE, 230)));
+            p.line_segment([q, pt], Stroke::new(2.0_f32, a(WHITE, 230)));
         }
         prev = Some(pt);
     }
@@ -386,7 +386,7 @@ pub fn spark(ui: &mut Ui, values: &[f32], size: Vec2, max: f32) {
     ui.painter()
         .add(egui::Shape::convex_polygon(poly, a(WHITE, 10), Stroke::NONE));
     ui.painter()
-        .add(egui::Shape::line(pts, Stroke::new(1.2, a(WHITE, 205))));
+        .add(egui::Shape::line(pts, Stroke::new(1.2_f32, a(WHITE, 205))));
 }
 
 /// Big number + caption block.

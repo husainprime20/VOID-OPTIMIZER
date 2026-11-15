@@ -11,10 +11,10 @@
 //   * sparse bell        — one soft strike every ~11 s, pentatonic, 6 s tail
 // Fade-in 6 s, stereo width from a 31 mHz LFO, peak gain 0.20.
 
-use std::f32::consts::TAU;
+use std::f64::consts::TAU;
 use std::time::Duration;
 
-use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::{OutputStream, Sink, Source};
 
 pub const PRESETS: &[(&str, &str)] = &[
     ("Nocturne", "55 Hz drone · warm, slow, no pulse"),
@@ -143,7 +143,7 @@ impl Ambient {
             .started
             .map(|s| s.elapsed().as_secs_f32())
             .unwrap_or(0.0);
-        let lfo = (t * 0.031 * TAU).sin() * 0.5 + 0.5;
+        let lfo = (t * 0.031 * std::f32::consts::TAU).sin() * 0.5 + 0.5;
         (0.12 + 0.55 * lfo * self.volume).clamp(0.0, 1.0)
     }
 }

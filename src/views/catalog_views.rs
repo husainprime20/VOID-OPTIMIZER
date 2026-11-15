@@ -14,7 +14,7 @@ pub fn optimize(app: &mut App, ui: &mut Ui) {
         // search
         egui::Frame::none()
             .fill(INK)
-            .stroke(egui::Stroke::new(1.0, LINE))
+            .stroke(egui::Stroke::new(1.0_f32, LINE))
             .rounding(9.0)
             .inner_margin(egui::Margin::symmetric(12.0, 7.0))
             .show(ui, |ui| {
@@ -179,7 +179,7 @@ fn profile_card(app: &mut App, ui: &mut Ui, p: &'static catalog::Profile) {
     let active = app.state.last_profile == p.id;
     let frame = egui::Frame::none()
         .fill(INK)
-        .stroke(egui::Stroke::new(1.0, if active { a(WHITE, 70) } else { LINE }))
+        .stroke(egui::Stroke::new(1.0_f32, if active { a(WHITE, 70) } else { LINE }))
         .rounding(16.0)
         .inner_margin(egui::Margin::same(18.0));
     frame.show(ui, |ui| {

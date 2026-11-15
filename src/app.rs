@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use eframe::egui::{self, Align, Align2, Color32, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Align, Align2, Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::audio::Ambient;
 use crate::engine::{self, Machine, State, Stats};
@@ -521,7 +521,7 @@ impl App {
         ui.painter().rect_filled(box_rect, 10.0, fill);
         if !self.machine.admin {
             ui.painter()
-                .rect_stroke(box_rect, 10.0, Stroke::new(1.0, LINE2));
+                .rect_stroke(box_rect, 10.0, Stroke::new(1.0_f32, LINE2));
         }
         ui.painter().text(
             box_rect.center(),
@@ -543,7 +543,7 @@ impl App {
             );
             ui.painter().rect_filled(br, 10.0, a(WHITE, 8));
             ui.painter()
-                .rect_stroke(br, 10.0, Stroke::new(1.0, a(WHITE, 60)));
+                .rect_stroke(br, 10.0, Stroke::new(1.0_f32, a(WHITE, 60)));
             ui.painter().text(
                 br.center(),
                 Align2::CENTER_CENTER,
@@ -585,7 +585,7 @@ impl App {
                     ui.painter().rect_stroke(
                         rect,
                         10.0,
-                        Stroke::new(1.0, Color32::from_rgba_unmultiplied(70, 70, 78, alpha)),
+                        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(70, 70, 78, alpha)),
                     );
                     let dot = match t.kind {
                         0 => Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
@@ -638,7 +638,7 @@ impl App {
                 ui.set_width(580.0);
                 egui::Frame::none()
                     .fill(INK)
-                    .stroke(Stroke::new(1.0, LINE2))
+                    .stroke(Stroke::new(1.0_f32, LINE2))
                     .rounding(20.0)
                     .inner_margin(egui::Margin::same(26.0))
                     .show(ui, |ui| {

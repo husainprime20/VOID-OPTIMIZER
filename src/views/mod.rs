@@ -3,9 +3,7 @@
 pub mod catalog_views;
 pub mod live;
 
-use eframe::egui::{
-    self, Align, Align2, Color32, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2,
-};
+use eframe::egui::{self, Align, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2};
 
 use crate::app::{Action, App, Modal, View};
 use crate::engine::{self, catalog};
@@ -57,7 +55,7 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
 
     let frame = egui::Frame::none()
         .fill(if on { INK2 } else { INK })
-        .stroke(Stroke::new(1.0, if on { a(WHITE, 55) } else { LINE }))
+        .stroke(Stroke::new(1.0_f32, if on { a(WHITE, 55) } else { LINE }))
         .rounding(14.0)
         .inner_margin(egui::Margin::symmetric(16.0, 13.0));
 
