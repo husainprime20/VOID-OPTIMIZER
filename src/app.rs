@@ -166,7 +166,9 @@ impl App {
         if !state.muted && state.volume > 0 {
             audio.play();
         }
-        let stats = Stats::default();
+        // prime the CPU counters so the first painted frame has a real delta
+        let primed = engine::sample();
+        let stats = if primed.total_gb > 0.0 { primed } else { Stats::default() };
         // Lets CI render a specific view head-lessly (see .github/workflows/preview.yml)
         let view = match std::env::var("VOID_VIEW").unwrap_or_default().as_str() {
             "optimize" => View::Optimize,

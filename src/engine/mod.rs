@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.2.1";
+pub const VERSION: &str = "0.2.2";
 
 // ───────────────────────────── machine ─────────────────────────────
 
