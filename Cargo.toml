@@ -1,0 +1,20 @@
+[package]
+name = "void-optimizer"
+version = "0.1.0"
+edition = "2021"
+description = "VOID // a luxury-grade, zero-dependency competitive gaming optimizer"
+license = "MIT"
+readme = "README.md"
+
+[[bin]]
+name = "void"
+path = "src/main.rs"
+
+# VOID is deliberately dependency-free: the entire product is std-only Rust.
+# `opt-level = "z"` + LTO + strip keeps the shipped binary under ~1.5 MB.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

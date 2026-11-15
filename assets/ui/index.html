@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#050506" />
+<title>VOID — Competitive Optimizer</title>
+<link rel="icon" href="/favicon.svg" />
+<link rel="stylesheet" href="/assets/app.css" />
+</head>
+<body>
+
+<!-- ── atmosphere ─────────────────────────────────────────────── -->
+<canvas id="dust" aria-hidden="true"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<!-- ── boot sequence ──────────────────────────────────────────── -->
+<div id="boot" aria-hidden="true">
+  <div class="boot-inner">
+    <div class="boot-mark">
+      <span style="--d:0ms">V</span><span style="--d:70ms">O</span><span style="--d:140ms">I</span><span style="--d:210ms">D</span>
+    </div>
+    <div class="boot-sub">competitive optimizer</div>
+    <div class="boot-bar"><i id="bootbar"></i></div>
+    <div class="boot-log" id="bootlog">engine online</div>
+  </div>
+  <div class="boot-skip">click to enter</div>
+</div>
+
+<!-- ── app shell ──────────────────────────────────────────────── -->
+<div id="shell">
+
+  <aside class="rail">
+    <div class="brand" title="VOID">
+      <svg viewBox="0 0 32 32" class="brand-mark" aria-hidden="true">
+        <path d="M6 7 L16 26 L26 7" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <circle cx="16" cy="7" r="1.6" fill="currentColor"/>
+      </svg>
+      <div class="brand-text">VOID<em>// optimizer</em></div>
+    </div>
+
+    <nav id="nav" aria-label="Sections">
+      <button class="nav-item is-active" data-view="dashboard">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-item" data-view="optimize">
+        <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="17" r="2"/></svg>
+        <span>Optimize</span>
+      </button>
+      <button class="nav-item" data-view="profiles">
+        <svg viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 17l9 5 9-5"/></svg>
+        <span>Profiles</span>
+      </button>
+      <button class="nav-item" data-view="freefire">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/></svg>
+        <span>Free Fire</span>
+      </button>
+      <button class="nav-item" data-view="network">
+        <svg viewBox="0 0 24 24"><path d="M2.5 13h4l2.5-7 4 14 2.5-7h6"/></svg>
+        <span>Network</span>
+      </button>
+      <button class="nav-item" data-view="kernel">
+        <svg viewBox="0 0 24 24"><path d="M12 2.8l7.5 4.3v9.8L12 21.2 4.5 16.9V7.1L12 2.8Z"/><path d="M12 8.2v7.6M8.8 10l6.4 4M15.2 10l-6.4 4"/></svg>
+        <span>Kernel</span>
+      </button>
+      <button class="nav-item" data-view="monitor">
+        <svg viewBox="0 0 24 24"><path d="M3 16.5h3.2l2.1-6.6 3.3 10 2.4-8.2 2 4.8H21"/></svg>
+        <span>Monitor</span>
+      </button>
+      <button class="nav-item" data-view="aim">
+        <svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+        <span>Aim Lab</span>
+      </button>
+      <button class="nav-item" data-view="settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="audio-panel" id="audio-panel">
+        <div class="audio-head">
+          <span class="micro">ambient</span>
+          <button class="audio-power" id="audio-toggle" aria-label="Toggle ambient sound">
+            <span id="audio-state">off</span>
+          </button>
+        </div>
+        <div class="audio-viz" id="audio-viz" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div class="audio-row">
+          <input type="range" min="0" max="100" value="34" id="audio-range" aria-label="Ambient volume" />
+          <span class="audio-val" id="audio-val">34</span>
+        </div>
+        <div class="audio-modes">
+          <button class="mini is-on" data-preset="pad">pad</button>
+          <button class="mini" data-preset="rain">rain</button>
+          <button class="mini" data-preset="deep">deep</button>
+        </div>
+      </div>
+      <div class="rail-sys">
+        <span class="dot" id="sys-dot"></span>
+        <span id="rail-host">local</span>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div class="crumbs">
+        <span class="crumb-kicker">void</span>
+        <span class="crumb-sep">/</span>
+        <span id="crumb">dashboard</span>
+      </div>
+      <div class="top-right">
+        <span class="chip" id="chip-mode">native</span>
+        <span class="chip" id="chip-admin">admin</span>
+        <span class="chip mono" id="chip-clock">--:--:--</span>
+        <button class="palette-hint" id="palette-hint">
+          <span>search</span><kbd>⌘K</kbd>
+        </button>
+        <button class="btn-ignite" id="btn-ignite">
+          <span>ignite</span>
+          <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div id="views">
+
+      <!-- ══════════════ DASHBOARD ══════════════ -->
+      <section class="view is-active" data-view="dashboard">
+        <div class="hero">
+          <div class="hero-left">
+            <p class="micro reveal" style="--i:0">system readiness</p>
+            <h1 class="hero-title reveal" style="--i:1">
+              <span id="d-ready">0</span><em>%</em>
+            </h1>
+            <p class="hero-sub reveal" style="--i:2" id="d-verdict">Measuring the machine…</p>
+            <div class="hero-meta reveal" style="--i:3">
+              <div><span class="micro">cpu</span><b id="d-cpu">—</b></div>
+              <div><span class="micro">gpu</span><b id="d-gpu">—</b></div>
+              <div><span class="micro">os</span><b id="d-os">—</b></div>
+            </div>
+            <div class="hero-actions reveal" style="--i:4">
+              <button class="btn" id="d-quick">apply competitive stack</button>
+              <button class="btn ghost" id="d-revert">revert all</button>
+            </div>
+          </div>
+          <div class="hero-ring reveal" style="--i:2">
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <circle class="ring-track" cx="100" cy="100" r="86"/>
+              <circle class="ring-val" id="ring-val" cx="100" cy="100" r="86"/>
+              <circle class="ring-inner" cx="100" cy="100" r="70"/>
+            </svg>
+            <div class="ring-center">
+              <span class="micro">stack</span>
+              <b><span id="d-applied">0</span><i>/</i><span id="d-total">0</span></b>
+              <em id="d-profile">no profile</em>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-grid" id="d-stats">
+          <div class="card stat">
+            <div class="stat-head"><span class="micro">cpu load</span><span class="stat-tag" id="s-cpu-tag">live</span></div>
+            <div class="stat-val"><span id="s-cpu">0</span><em>%</em></div>
+            <canvas class="spark" id="spark-cpu" width="300" height="44"></canvas>
+          </div>
+          <div class="card stat">
+            <div class="stat-head"><span class="micro">memory</span><span class="stat-tag" id="s-ram-tag">live</span></div>
+            <div class="stat-val"><span id="s-ram">0</span><em>%</em></div>
+            <canvas class="spark" id="spark-ram" width="300" height="44"></canvas>
+          </div>
+          <div class="card stat">
+            <div class="stat-head"><span class="micro">timer jitter</span><span class="stat-tag">bench</span></div>
+            <div class="stat-val"><span id="s-jitter">—</span><em>ms</em></div>
+            <canvas class="spark" id="spark-jit" width="300" height="44"></canvas>
+          </div>
+          <div class="card stat">
+            <div class="stat-head"><span class="micro">uptime</span><span class="stat-tag">host</span></div>
+            <div class="stat-val"><span id="s-up">—</span><em id="s-up-unit">h</em></div>
+            <div class="stat-foot mono" id="s-host">—</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-head">
+              <span class="micro">active stack</span>
+              <button class="link" data-goto="optimize">manage →</button>
+            </div>
+            <div id="d-applied-list" class="stack-list"><p class="empty">Nothing applied yet. Ignite the stack.</p></div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <span class="micro">engine journal</span>
+              <span class="live-dot">live</span>
+            </div>
+            <div class="terminal" id="d-log"><div class="t-line dim">waiting for engine…</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ OPTIMIZE ══════════════ -->
+      <section class="view" data-view="optimize">
+        <div class="view-head">
+          <div>
+            <p class="micro">tweak catalog</p>
+            <h2>Every lever, documented.</h2>
+            <p class="sub">Each entry shows exactly what runs and how to undo it. Nothing is hidden.</p>
+          </div>
+          <div class="view-head-side">
+            <div class="field">
+              <input type="search" id="o-search" placeholder="filter…" aria-label="Filter tweaks" />
+            </div>
+          </div>
+        </div>
+        <div class="filters" id="o-filters"></div>
+        <div class="tweak-list" id="o-list"></div>
+        <div class="action-bar" id="o-bar">
+          <div class="ab-left">
+            <span class="micro">selection</span>
+            <b id="o-count">0</b>
+            <div class="ab-actions">
+              <button class="mini" id="o-select-safe">safe only</button>
+              <button class="mini" id="o-select-none">clear</button>
+            </div>
+          </div>
+          <div class="ab-right">
+            <button class="btn ghost" id="o-revert">revert applied</button>
+            <button class="btn" id="o-apply">apply selected</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ PROFILES ══════════════ -->
+      <section class="view" data-view="profiles">
+        <div class="view-head">
+          <div>
+            <p class="micro">profiles</p>
+            <h2>One click. Whole stack.</h2>
+            <p class="sub">Curated bundles of tweaks. Hover to preview the recipe, engage to run it.</p>
+          </div>
+        </div>
+        <div class="profile-grid" id="p-grid"></div>
+        <div class="card note-card">
+          <span class="micro">reboot policy</span>
+          <p>Kernel, HAGS, Nagle and HID queue changes need one reboot to bite. VOID never reboots for you.</p>
+        </div>
+      </section>
+
+      <!-- ══════════════ FREE FIRE ══════════════ -->
+      <section class="view" data-view="freefire">
+        <div class="view-head">
+          <div>
+            <p class="micro">free fire · ff max · emulator</p>
+            <h2>Built for the drop.</h2>
+            <p class="sub">Emulator priority, physical-core pinning and a low-latency net stack — applied in one pass.</p>
+          </div>
+          <div class="view-head-side">
+            <button class="btn" id="ff-boost">pre-match boost</button>
+          </div>
+        </div>
+
+        <div class="ff-grid">
+          <div class="card ff-main">
+            <div class="card-head"><span class="micro">emulator control</span><span class="live-dot">hot</span></div>
+            <div class="ff-actions">
+              <button class="ff-btn" id="ff-priority">
+                <span class="micro">01</span>
+                <b>Priority → HIGH</b>
+                <em>Windows CPU priority class of the emulator process</em>
+              </button>
+              <button class="ff-btn" id="ff-affinity">
+                <span class="micro">02</span>
+                <b>Pin physical cores</b>
+                <em>Skip SMT siblings, cut Android translation jitter</em>
+              </button>
+              <button class="ff-btn" id="ff-network">
+                <span class="micro">03</span>
+                <b>Low-latency net stack</b>
+                <em>Nagle off, throttling off, MMCSS game profile</em>
+              </button>
+            </div>
+            <div class="ff-status" id="ff-status">No emulator detected · simulated</div>
+          </div>
+
+          <div class="card guide">
+            <div class="card-head"><span class="micro">emulator settings</span><span class="stat-tag">recommended</span></div>
+            <ul class="guide-list">
+              <li><span>Engine</span><b>DirectX / OpenGL+</b></li>
+              <li><span>CPU cores</span><b>4 (of 6-8 physical)</b></li>
+              <li><span>RAM</span><b>4096 MB</b></li>
+              <li><span>FPS cap</span><b>90 (or display Hz)</b></li>
+              <li><span>Graphics</span><b>High performance</b></li>
+              <li><span>ASTC / texture</span><b>Hardware decode</b></li>
+              <li><span>Resolution</span><b>1280×720 (DPL)</b></li>
+              <li><span>Anti-aliasing</span><b>Off</b></li>
+            </ul>
+            <p class="fine">BlueStacks 5 · LDPlayer 9 · MuMu 12 · MEmu. Values are starting points — tune per rig.</p>
+          </div>
+        </div>
+
+        <div class="card safety">
+          <span class="micro">anti-cheat safety</span>
+          <p>VOID never touches Free Fire files, memory, or the emulator's APK. It only changes Windows-level scheduling, networking and power. That is why it cannot get you banned — and why you should not install anything that claims otherwise.</p>
+        </div>
+      </section>
+
+      <!-- ══════════════ NETWORK ══════════════ -->
+      <section class="view" data-view="network">
+        <div class="view-head">
+          <div>
+            <p class="micro">network &amp; latency</p>
+            <h2>Packets leave on the first tick.</h2>
+            <p class="sub">Nagle off, throttling off, MMCSS game profile — the stack that decides hit registration.</p>
+          </div>
+          <div class="view-head-side">
+            <button class="btn ghost" id="n-flush">flush dns</button>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-head"><span class="micro">net stack</span><span class="stat-tag">catalog</span></div>
+            <div id="n-list" class="stack-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="micro">scheduler timeline</span><span class="live-dot">live</span></div>
+            <canvas id="jitter" width="600" height="240"></canvas>
+            <div class="legend">
+              <span><i class="sw"></i>tick interval</span>
+              <span class="fine">Synthetic visualisation of kernel tick consistency.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ KERNEL ══════════════ -->
+      <section class="view" data-view="kernel">
+        <div class="view-head">
+          <div>
+            <p class="micro">kernel &amp; boot</p>
+            <h2>Under the OS.</h2>
+            <p class="sub">BCD-level changes. These need a reboot and a restore point. Read before you toggle.</p>
+          </div>
+          <div class="view-head-side">
+            <button class="btn ghost" id="k-restore">create restore point</button>
+          </div>
+        </div>
+        <div class="warn-card">
+          <span class="micro">advanced tier</span>
+          <p>This tier writes to the boot configuration database and security features. VOID auto-creates a System Restore point before each advanced tweak when the option is enabled in Settings.</p>
+        </div>
+        <div id="k-list" class="tweak-list"></div>
+      </section>
+
+      <!-- ══════════════ MONITOR ══════════════ -->
+      <section class="view" data-view="monitor">
+        <div class="view-head">
+          <div>
+            <p class="micro">monitor</p>
+            <h2>The machine, live.</h2>
+            <p class="sub">Sampled straight from the OS. No overlays, no hooks, no injected DLLs.</p>
+          </div>
+          <div class="view-head-side">
+            <button class="btn ghost" id="m-bench">run jitter bench</button>
+          </div>
+        </div>
+        <div class="mon-grid">
+          <div class="card mon">
+            <div class="mon-head"><span class="micro">cpu</span><b><span id="m-cpu">0</span><em>%</em></b></div>
+            <div class="bar"><i id="m-cpu-bar"></i></div>
+            <canvas id="spark-cpu2" class="spark wide" width="560" height="90"></canvas>
+          </div>
+          <div class="card mon">
+            <div class="mon-head"><span class="micro">memory</span><b><span id="m-ram">0</span><em>%</em></b></div>
+            <div class="bar"><i id="m-ram-bar"></i></div>
+            <canvas id="spark-ram2" class="spark wide" width="560" height="90"></canvas>
+            <div class="mon-foot mono" id="m-ramtxt">—</div>
+          </div>
+          <div class="card mon">
+            <div class="mon-head"><span class="micro">uptime</span><b><span id="m-uptime">—</span></b></div>
+            <div class="mon-foot mono" id="m-boot">—</div>
+            <div class="mon-divider"></div>
+            <div class="mon-head"><span class="micro">tweak operations</span><b><span id="m-ops">0</span></b></div>
+          </div>
+          <div class="card mon">
+            <div class="mon-head"><span class="micro">jitter bench</span><b><span id="m-score">—</span><em>/100</em></b></div>
+            <div class="mon-foot mono" id="m-bench-out">not measured</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ AIM LAB ══════════════ -->
+      <section class="view" data-view="aim">
+        <div class="view-head">
+          <div>
+            <p class="micro">aim lab</p>
+            <h2>Numbers you can feel.</h2>
+            <p class="sub">eDPI is real math: your mouse DPI multiplied by in-game sensitivity. Lock it, change DPI, keep the feel.</p>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-head"><span class="micro">edpi calculator</span><span class="stat-tag">live</span></div>
+            <div class="aim-form">
+              <label><span class="micro">mouse dpi</span><input type="number" id="aim-dpi" value="800" min="100" max="32000" step="50" /></label>
+              <label><span class="micro">in-game sens</span><input type="number" id="aim-sens" value="95" min="1" max="100" step="1" /></label>
+            </div>
+            <div class="aim-out">
+              <span class="micro">effective dpi</span>
+              <b id="aim-edpi">760</b>
+            </div>
+            <div class="aim-lock">
+              <button class="mini" id="aim-lock">lock edpi</button>
+              <span class="fine">Lock keeps eDPI constant while you change DPI — auto-solves the in-game value.</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="micro">free fire presets</span><span class="stat-tag">starting points</span></div>
+            <div id="aim-presets" class="preset-list"></div>
+            <p class="fine">Community baselines, not gospel. Change one value at a time and play 10 minutes before judging.</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="micro">warm-up protocol</span><span class="stat-tag">5 min</span></div>
+          <div class="routine">
+            <div class="step"><b>01</b><span>60 s — tracking circles, no flicking. Shoulder discipline only.</span></div>
+            <div class="step"><b>02</b><span>90 s — one-tap flicks at 8 m, 15 m, 25 m, in that order.</span></div>
+            <div class="step"><b>03</b><span>60 s — close-range spray control, drag down, reset, repeat.</span></div>
+            <div class="step"><b>04</b><span>90 s — peek &amp; hold at a doorway, pre-aim head level.</span></div>
+            <div class="step"><b>05</b><span>30 s — free look sweeps, both directions, then queue.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════ SETTINGS ══════════════ -->
+      <section class="view" data-view="settings">
+        <div class="view-head">
+          <div>
+            <p class="micro">settings</p>
+            <h2>Make it yours.</h2>
+            <p class="sub">Audio, motion, safety rails. Stored locally, never uploaded.</p>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-head"><span class="micro">ambient engine</span><span class="stat-tag">audio</span></div>
+            <div class="setting-row">
+              <div><b>Ambient sound</b><p>Generated live with WebAudio — no audio files, zero bytes shipped.</p></div>
+              <button class="switch" id="set-audio" role="switch" aria-checked="false"><i></i></button>
+            </div>
+            <div class="setting-row">
+              <div><b>Volume</b><p>Master gain of the ambient bus.</p></div>
+              <div class="slider-wrap">
+                <input type="range" min="0" max="100" value="34" id="set-volume" />
+                <span class="mono" id="set-volume-val">34</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><b>UI sounds</b><p>Soft tick on every action.</p></div>
+              <button class="switch is-on" id="set-uisfx" role="switch" aria-checked="true"><i></i></button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><span class="micro">safety rails</span><span class="stat-tag">recommended</span></div>
+            <div class="setting-row">
+              <div><b>Auto restore point</b><p>Creates a System Restore checkpoint before advanced tweaks.</p></div>
+              <button class="switch is-on" id="set-backup" role="switch" aria-checked="true"><i></i></button>
+            </div>
+            <div class="setting-row">
+              <div><b>Dry run</b><p>Print every command, change nothing. Perfect for a first look.</p></div>
+              <button class="switch" id="set-dry" role="switch" aria-checked="false"><i></i></button>
+            </div>
+            <div class="setting-row">
+              <div><b>Reduced motion</b><p>Disable the particle field and stagger animations.</p></div>
+              <button class="switch" id="set-motion" role="switch" aria-checked="false"><i></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><span class="micro">engine</span><span class="stat-tag">info</span></div>
+          <div class="kv-grid" id="set-info"></div>
+          <div class="row-actions">
+            <button class="btn ghost" id="set-catalog">export catalog json</button>
+            <button class="btn ghost" id="set-revert">revert everything</button>
+          </div>
+        </div>
+
+        <div class="card about">
+          <div class="about-mark">VOID</div>
+          <p>Zero dependencies. One Rust binary. The UI you are looking at is compiled into the executable with <code>include_str!</code> — there is no framework, no npm, no Electron.</p>
+          <p class="fine">v0.1.0 · MIT · built for people who care about the last 3 milliseconds.</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ── overlays ───────────────────────────────────────────────── -->
+<div id="toasts" aria-live="polite"></div>
+
+<div id="modal" class="overlay">
+  <div class="modal-card">
+    <div class="modal-head">
+      <span class="micro" id="modal-kicker">confirm</span>
+      <button class="icon-btn" id="modal-x" aria-label="Close">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <h3 id="modal-title">Apply stack</h3>
+    <p id="modal-body">This will run the following commands.</p>
+    <pre id="modal-code" class="modal-code"></pre>
+    <div class="modal-foot">
+      <button class="btn ghost" id="modal-cancel">cancel</button>
+      <button class="btn" id="modal-ok">run</button>
+    </div>
+  </div>
+</div>
+
+<div id="palette" class="overlay">
+  <div class="palette-card">
+    <input type="text" id="palette-input" placeholder="Jump to a section, apply a profile, run an action…" />
+    <div id="palette-list" class="palette-list"></div>
+    <div class="palette-foot"><kbd>↑</kbd><kbd>↓</kbd> navigate <kbd>↵</kbd> run <kbd>esc</kbd> close</div>
+  </div>
+</div>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>
