@@ -1,5 +1,9 @@
 //! The VOID engine: state, catalog serialisation, apply/revert, telemetry.
 
+// The console companion only uses part of the engine; the native app uses all
+// of it. Warnings about one binary not touching a helper are just noise.
+#![allow(dead_code)]
+
 pub mod catalog;
 
 use crate::json;
@@ -10,7 +14,7 @@ use std::fs;
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -144,6 +148,13 @@ impl State {
                     "auto_backup" => self.auto_backup = truthy(v),
                     "dry_run" => self.dry_run = truthy(v),
                     "last_profile" => self.last_profile = v.to_string(),
+                    "applied" => {
+                        self.applied = v
+                            .split(',')
+                            .map(|x| x.trim().to_string())
+                            .filter(|x| !x.is_empty())
+                            .collect();
+                    }
                     _ => {}
                 }
             }
@@ -152,13 +163,14 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nmuted={}\nmotion={}\nauto_backup={}\ndry_run={}\nlast_profile={}\n",
+            "volume={}\nmuted={}\nmotion={}\nauto_backup={}\ndry_run={}\nlast_profile={}\napplied={}\n",
             self.volume,
             if self.muted { 1 } else { 0 },
             if self.motion { 1 } else { 0 },
             if self.auto_backup { 1 } else { 0 },
             if self.dry_run { 1 } else { 0 },
-            self.last_profile
+            self.last_profile,
+            self.applied.iter().cloned().collect::<Vec<String>>().join(",")
         );
         let _ = fs::write(settings_path(), body);
     }
@@ -560,7 +572,9 @@ pub fn apply_ids(state: &mut State, ids: &[String]) -> Vec<Outcome> {
             Some(t) => {
                 let o = apply_one(state, t, false);
                 if o.ok {
-                    if t.once {
+                    if state.sim() {
+                        // nothing was written to the machine — do not pretend
+                    } else if t.once {
                         state.applied.remove(t.id);
                     } else {
                         state.applied.insert(t.id.to_string());
@@ -888,4 +902,174 @@ pub fn bench_json() -> String {
         json::ki("samples", sorted.len() as i64),
         json::ki("ts", platform::epoch_secs()),
     ])
+}
+
+// ───────────────────── typed telemetry for the native UI ─────────────────────
+
+#[derive(Clone, Copy, Default)]
+pub struct Stats {
+    pub cpu: f64,
+    pub ram: f64,
+    pub total_gb: f64,
+    pub used_gb: f64,
+    pub uptime: i64,
+}
+
+pub fn sample() -> Stats {
+    let (cpu, total_gb, used_gb) = if platform::is_windows() {
+        stats_windows()
+    } else {
+        stats_unix()
+    };
+    Stats {
+        cpu,
+        ram: if total_gb > 0.0 {
+            used_gb / total_gb * 100.0
+        } else {
+            0.0
+        },
+        total_gb,
+        used_gb,
+        uptime: platform::uptime_secs(),
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct BenchResult {
+    pub avg: f64,
+    pub p50: f64,
+    pub p95: f64,
+    pub max: f64,
+    pub jitter: f64,
+    pub score: f64,
+    pub samples: usize,
+}
+
+pub fn bench() -> BenchResult {
+    let mut samples: Vec<f64> = Vec::with_capacity(120);
+    for _ in 0..120 {
+        let t0 = Instant::now();
+        thread::sleep(Duration::from_millis(1));
+        samples.push(t0.elapsed().as_secs_f64() * 1000.0);
+    }
+    let n = samples.len() as f64;
+    let avg = samples.iter().sum::<f64>() / n;
+    let mut sorted = samples.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p50 = sorted[sorted.len() / 2];
+    let p95 = sorted[((sorted.len() as f64) * 0.95) as usize % sorted.len()];
+    let max = sorted[sorted.len() - 1];
+    let jitter = (avg - 1.0).max(0.0);
+    BenchResult {
+        avg,
+        p50,
+        p95,
+        max,
+        jitter,
+        score: (100.0 - jitter * 6.0).clamp(0.0, 100.0),
+        samples: sorted.len(),
+    }
+}
+
+// ───────────────────────── android emulators (Free Fire) ─────────────────────
+
+pub struct Emulator {
+    pub name: &'static str,
+    pub path: &'static str,
+    pub installed: bool,
+    pub running: bool,
+}
+
+pub const EMULATORS: &[(&str, &str, &str)] = &[
+    ("BlueStacks 5", r"C:\Program Files\BlueStacks_nxt\HD-Player.exe", "HD-Player"),
+    ("BlueStacks 4", r"C:\Program Files\BlueStacks\HD-Player.exe", "HD-Player"),
+    ("LDPlayer 9", r"C:\LDPlayer\LDPlayer9\dnplayer.exe", "dnplayer"),
+    ("LDPlayer 4", r"C:\LDPlayer\LDPlayer4.0\dnplayer.exe", "dnplayer"),
+    ("MuMu Player 12", r"C:\Program Files\Netease\MuMuPlayer-12.0\shell\MuMuPlayer.exe", "MuMuPlayer"),
+    ("MEmu", r"C:\Program Files\Microvirt\MEmu\MEmu.exe", "MEmu"),
+    ("Nox", r"C:\Program Files (x86)\Nox\bin\Nox.exe", "Nox"),
+    ("GameLoop", r"C:\Program Files\Tencent\GameLoop\Launcher\GameLoop.exe", "GameLoop"),
+    ("Google Play Games", r"C:\Program Files\Google\Play Games\Bootstrapper.exe", "Bootstrapper"),
+];
+
+pub fn emulators() -> Vec<Emulator> {
+    // one process-table read, not nine PowerShell round-trips
+    let running: Vec<String> = if platform::is_windows() {
+        platform::processes()
+            .into_iter()
+            .map(|(n, _, _)| n.to_lowercase())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    EMULATORS
+        .iter()
+        .map(|(name, path, exe)| {
+            let needle = format!("{}.exe", exe.to_lowercase());
+            Emulator {
+                name,
+                path,
+                installed: platform::exists(path),
+                running: running.iter().any(|p| p == &needle || p.starts_with(&needle)),
+            }
+        })
+        .collect()
+}
+
+/// Raise the priority of whichever emulator is currently running.
+pub fn boost_emulator() -> Result<String, String> {
+    let procs = platform::processes();
+    for (name, path, exe) in EMULATORS.iter() {
+        let needle = format!("{}.exe", exe.to_lowercase());
+        if let Some((pname, pid, _)) = procs
+            .iter()
+            .find(|(p, _, _)| p.to_lowercase() == needle || p.to_lowercase().starts_with(&needle))
+        {
+            platform::set_priority(*pid, "High")
+                .map(|_| format!("{} boosted · pid {} · high", name, pid))
+                .map_err(|e| format!("{} ({}) · {}", name, pname, e))?;
+            let _ = path;
+            return Ok(format!("{} boosted · pid {}", name, pid));
+        }
+    }
+    Err("no emulator is running".to_string())
+}
+
+pub fn launch_emulator(path: &str) -> Result<String, String> {
+    platform::spawn_detached(path).map(|_| "launcher started".to_string())
+}
+
+pub fn processes() -> Vec<(String, u32, f64)> {
+    platform::processes()
+}
+
+pub fn boost_pid(pid: u32) -> Result<String, String> {
+    platform::set_priority(pid, "High")
+}
+
+pub fn timer_resolution_ms() -> Option<f64> {
+    platform::timer_resolution_ms()
+}
+
+pub fn power_plan() -> String {
+    platform::power_plan()
+}
+
+/// Percentage of the catalog that this machine can actually run.
+pub fn readiness(state: &State, machine: &Machine) -> f64 {
+    if TWEAKS.is_empty() {
+        return 0.0;
+    }
+    let weak_gpu = machine.gpu.to_lowercase().contains("730")
+        || machine.gpu.to_lowercase().contains("intel");
+    let mut possible = 0usize;
+    let mut done = 0usize;
+    for t in TWEAKS.iter() {
+        possible += 1;
+        if state.applied.contains(t.id) {
+            done += 1;
+        }
+    }
+    let _ = weak_gpu;
+    done as f64 / possible as f64 * 100.0
 }

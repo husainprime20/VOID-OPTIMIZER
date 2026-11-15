@@ -1,13 +1,10 @@
-//! VOID // competitive gaming optimizer
+//! VOID // console companion.
 //!
-//! A single, dependency-free Rust binary that:
-//!   1. serves an embedded, animated UI on localhost,
-//!   2. exposes a JSON control API,
-//!   3. applies / reverts documented Windows performance tweaks,
-//!   4. can be driven head-less from any terminal.
+//! The product is `VOID.exe` (a native desktop window — see `src/gui.rs`).
+//! This binary is the head-less half: scriptable, CI-friendly, and able to
+//! serve the legacy web preview over localhost for anyone who wants it.
 //!
-//! `void`            → open the UI (app window when possible)
-//! `void serve`      → serve only, print the URL
+//! `void-cli status` → machine + engine state
 //! `void apply <p>`  → apply a profile or a single tweak
 //! `void revert`     → revert everything VOID has applied
 //! `void status`     → machine + engine state (use --json for machines)
@@ -57,11 +54,23 @@ fn try_st(app: &App) -> Option<MutexGuard<'_, State>> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let command = args.get(1).cloned().unwrap_or_else(|| "ui".to_string());
+    let command = args.get(1).cloned().unwrap_or_else(|| "status".to_string());
     match command.as_str() {
         "ui" | "start" | "serve" => {
             let open = command != "serve" && !has_flag(&args, "--no-window");
             cmd_serve(&args, open);
+        }
+        "app" => {
+            // hand over to the native window, if it shipped next to us
+            let exe = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("VOID.exe")));
+            match exe {
+                Some(p) if p.exists() => {
+                    let _ = std::process::Command::new(p).spawn();
+                }
+                _ => eprintln!("void-cli: VOID.exe not found next to this binary"),
+            }
         }
         "status" => cmd_status(&args),
         "catalog" => cmd_catalog(),
@@ -80,19 +89,19 @@ fn main() {
 
 fn usage() {
     println!(
-        "\n  VOID // {}\n\
+        "\n  VOID // {}  (console companion)\n\
+         \n  The desktop app is VOID.exe. This binary is the scriptable half.\n\
          \n  USAGE\n\
-         \x20   void                     open the UI (app window)\n\
-         \x20   void serve [--host H] [--port P] [--no-window]\n\
-         \x20   void status [--json]     machine + engine state\n\
-         \x20   void catalog             dump the tweak catalog as JSON\n\
-         \x20   void apply <id> [--dry-run]   apply a profile or a single tweak\n\
-         \x20   void revert [--dry-run]  revert everything VOID applied\n\
-         \x20   void bench               sleep-jitter benchmark (JSON)\n\
+         \x20   void-cli status [--json]         machine + engine state\n\
+         \x20   void-cli catalog                 the tweak catalog as JSON\n\
+         \x20   void-cli apply <id> [--dry-run]  apply a profile or one tweak\n\
+         \x20   void-cli revert [--dry-run]      revert everything VOID applied\n\
+         \x20   void-cli bench                   sleep-jitter benchmark (JSON)\n\
+         \x20   void-cli app                     launch VOID.exe\n\
+         \x20   void-cli serve [--host H] [--port P]   legacy web preview\n\
          \n  EXAMPLES\n\
-         \x20   void apply competitive\n\
-         \x20   void apply ff.affinity --dry-run\n\
-         \x20   void serve --host 127.0.0.1 --port 8722\n\n",
+         \x20   void-cli apply competitive\n\
+         \x20   void-cli apply ff.affinity --dry-run\n\n",
         engine::VERSION
     );
 }

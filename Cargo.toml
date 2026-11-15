@@ -1,20 +1,30 @@
 [package]
 name = "void-optimizer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "VOID // a luxury-grade, zero-dependency competitive gaming optimizer"
+description = "VOID // a luxury-grade competitive gaming optimizer"
 license = "MIT"
 readme = "README.md"
 
+# Native desktop app (no browser, no webview, no HTTP server in the UI path).
 [[bin]]
 name = "void"
-path = "src/main.rs"
+path = "src/gui.rs"
 
-# VOID is deliberately dependency-free: the entire product is std-only Rust.
-# `opt-level = "z"` + LTO + strip keeps the shipped binary under ~1.5 MB.
+# Head-less console companion: status / apply / revert / bench / serve.
+[[bin]]
+name = "void-cli"
+path = "src/cli.rs"
+
+[dependencies]
+# UI: immediate-mode, GPU-drawn (OpenGL 3.3 — runs on a GT 730). Default features
+# keep winit's raw-window-handle support, which the Windows backend needs.
+eframe = "0.29"
+# Audio: WASAPI playback; decoders are disabled because VOID synthesises its own sound.
+rodio = { version = "0.19", default-features = false }
+
 [profile.release]
 opt-level = "z"
 lto = true
 codegen-units = 1
-panic = "abort"
 strip = true
