@@ -38,8 +38,8 @@ pub fn light() -> bool {
     MODE.load(Ordering::Relaxed) == 1
 }
 
-fn pick(dark: (u8, u8, u8), light: (u8, u8, u8)) -> Color32 {
-    let (r, g, b) = if light() { light } else { dark };
+fn pick(dark: (u8, u8, u8), pale: (u8, u8, u8)) -> Color32 {
+    let (r, g, b) = if light() { pale } else { dark };
     Color32::from_rgb(r, g, b)
 }
 
