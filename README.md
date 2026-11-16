@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.2.2` · native UI · Windows tweaks · Free Fire / FF Max tuned · monochrome · ambient audio
+`v0.3.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -78,7 +78,30 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
-### What's new
+### What's new in 0.3.0
+
+* **It opens instantly.** The window used to wait on four PowerShell CIM queries (OS, CPU,
+  GPU, admin) before it could draw. All of that now comes from the registry, the process
+  token and `powrprof` — **`boot_ms` is 8 ms** for the whole engine bring-up, measured on
+  the Windows build in CI. The only thing you wait for is the UAC prompt.
+* **The options actually run.** Every change happens on a worker thread with a progress
+  strip (`12/42 · registry value …`), so the window never freezes, and every registry write
+  is **read back from Windows** afterwards. A row shows `live` when the machine really holds
+  the value and `drift` when something else changed it behind VOID's back.
+* **Dry run is gone.** It was a way of pretending. There is now one behaviour: press it and
+  the machine changes, with the exact command visible in `details`.
+* **New type system.** IBM Plex Sans Light / Regular / Medium and IBM Plex Mono, subset to
+  84 KB total and embedded in the binary. A rebuilt shell: rail, live read-outs in the top
+  band, a job strip that reports each step, and a transition wipe between views.
+* **Native everywhere.** Registry writes, process enumeration (toolhelp), priority and
+  affinity, system checkpoint (`srclient.dll`, bound at runtime) — no `reg.exe`, no
+  `tasklist`, no `Checkpoint-Computer`. `powercfg` / `bcdedit` / `sc` / `netsh` remain,
+  because Windows only exposes those through a tool; all of them run hidden and off the UI
+  thread.
+* **Dead weight removed.** `src/http.rs`, `assets/ui/*` and `tools/preview.py` — the last
+  remains of the browser build — are deleted. The binary is 4.1 MB.
+
+### What's new in 0.2.x
 
 * **Native window.** The whole UI was re-implemented in Rust on `egui` — no HTML, no CSS,
   no HTTP server, no Chromium runtime.
@@ -89,7 +112,6 @@ documented way back.
 * **Instant telemetry.** CPU, RAM and uptime come from `kernel32` counters, not from
   spawning PowerShell every second — the UI never stutters while it watches itself.
 * **Applied stack persists.** Reopen the app and it still knows what it changed.
-* **Dry run is honest.** In dry-run, a tweak is logged and shown but never marked applied.
 * **New:** game watch (recognises a running game and offers the matching loadout),
   process boost, emulator detection + one-click boost, jitter panel with delta vs the
   previous run, eDPI/360° lab, restore point from any view.
@@ -126,20 +148,21 @@ logged instead of executed.
 ```
 void-cli status [--json]          machine + engine state
 void-cli catalog                  the tweak catalog as JSON
-void-cli apply <id> [--dry-run]   apply a profile or one tweak
-void-cli revert [--dry-run]       revert everything VOID applied
+void-cli apply <id>              apply a profile or one tweak
+void-cli revert                   revert everything VOID applied
 void-cli bench                    sleep-jitter benchmark (JSON)
 void-cli app                      launch VOID.exe
-void-cli serve                    legacy web preview on 127.0.0.1 (for design work)
 ```
 
 ---
 
 ## Safety model
 
-* Nothing runs until you press something, and the plan is printed before it runs.
-* **Dry run** (Settings, or Dashboard chip) logs commands without executing them.
-* **Auto restore point** creates a Windows checkpoint before any profile is applied.
+* Nothing runs until you press something, and the exact command is printed under `details`.
+* **Every write is verified** by reading the value back; failures are reported per step with
+  the Windows error, never swallowed.
+* **Checkpoint before advanced** creates a native system checkpoint (`srclient.dll`)
+  before any risk-2 tweak. It takes ~0.2 s, not the 20 s `Checkpoint-Computer` needed.
 * **Revert all** restores every value VOID touched — the same switch that applies a tweak reverts it.
 * Journal on disk: `%APPDATA%\VOID\void.log`. Settings: `%APPDATA%\VOID\settings.conf`.
 * A crash writes `%APPDATA%\VOID\crash.log` and shows a dialog — it never disappears silently.
@@ -151,7 +174,7 @@ void-cli serve                    legacy web preview on 127.0.0.1 (for design wo
 ```
 src/
   gui.rs              native entry point — GUI subsystem, one-time elevation, selftest
-  cli.rs              console companion (also serves the legacy web preview)
+  cli.rs              console companion (status / apply / revert / bench)
   app.rs              shell: rail, topbar, routing, toasts, modals, animation clock
   theme.rs            the whole design system: palette, type scale, cards, toggles, rings
   views/
@@ -163,7 +186,6 @@ src/
     mod.rs            state, apply/revert, telemetry, benchmark, emulator + process control
     catalog.rs        42 tweaks, 9 lanes, 7 profiles — every action documented & reversible
   platform.rs         process exec (no console), elevation, timer resolution, tasklist, UAC
-  http.rs             legacy preview server (only used by `void-cli serve`)
 assets/ui/            legacy web preview — kept for design comparison, not shipped in the app
 tools/preview.py      dev mirror of the legacy preview (used while designing the native UI)
 ```

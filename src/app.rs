@@ -234,7 +234,7 @@ impl App {
             last_job: String::new(),
             live: HashMap::new(),
             live_at: -10.0,
-            view_at: 0.0,
+            view_at: -10.0,
             frames: 0,
         }
     }
@@ -488,7 +488,7 @@ impl App {
         }
 
         // ── bottom: sound, engine state ──
-        let need = 190.0;
+        let need = 214.0;
         let space = ui.available_height() - need;
         if space > 0.0 {
             ui.add_space(space);
@@ -531,25 +531,25 @@ impl App {
 
         // level meter
         let (mrect, _) =
-            ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::hover());
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
         let lvl = self.audio.level();
         let bars = 22;
         let step = mrect.width() / bars as f32;
         for b in 0..bars {
-            let energy = (((b as f32 * 0.7).sin() * 0.5 + 0.5) * lvl).max(0.02);
-            let bh = 2.0 + 13.0 * energy;
+            let energy = (((b as f32 * 0.7).sin() * 0.5 + 0.5) * lvl).max(0.03);
+            let bh = 2.0 + 15.0 * energy;
             let x = mrect.left() + b as f32 * step;
             ui.painter().rect_filled(
                 Rect::from_min_max(
                     Pos2::new(x, mrect.bottom() - bh),
-                    Pos2::new(x + 2.0, mrect.bottom()),
+                    Pos2::new(x + 3.0, mrect.bottom()),
                 ),
                 1.0,
-                a(WHITE, if lvl > 0.01 { 130 } else { 20 }),
+                a(WHITE, if lvl > 0.01 { 165 } else { 30 }),
             );
         }
 
-        ui.add_space(10.0);
+        ui.add_space(12.0);
         let (srect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
         let dot = if self.busy() { DIM } else { WHITE };
@@ -677,55 +677,33 @@ impl App {
         );
         right -= w + 18.0;
 
-        // live readouts, right to left
+        // live readouts, right to left — label above, number under it
         let timer = match engine::timer_resolution_ms() {
-            Some(v) => format!("{:.2}", v),
+            Some(v) => format!("{:.1}", v),
             None => "--".to_string(),
         };
-        ui.painter().text(
-            Pos2::new(right, rect.top()),
-            Align2::RIGHT_TOP,
-            tracked("timer"),
-            micro_font(),
-            GHOST,
-        );
-        ui.painter().text(
-            Pos2::new(right, rect.bottom()),
-            Align2::RIGHT_BOTTOM,
-            timer,
-            num_font(19.0),
-            TXT,
-        );
-        right -= 74.0;
-        ui.painter().text(
-            Pos2::new(right, rect.top()),
-            Align2::RIGHT_TOP,
-            tracked("ram"),
-            micro_font(),
-            GHOST,
-        );
-        ui.painter().text(
-            Pos2::new(right, rect.bottom()),
-            Align2::RIGHT_BOTTOM,
-            format!("{:.0}", self.stats.ram),
-            num_font(19.0),
-            TXT,
-        );
-        right -= 64.0;
-        ui.painter().text(
-            Pos2::new(right, rect.top()),
-            Align2::RIGHT_TOP,
-            tracked("cpu"),
-            micro_font(),
-            GHOST,
-        );
-        ui.painter().text(
-            Pos2::new(right, rect.bottom()),
-            Align2::RIGHT_BOTTOM,
-            format!("{:.0}", self.stats.cpu),
-            num_font(19.0),
-            TXT,
-        );
+        let readouts: [(&str, String); 3] = [
+            ("timer", timer),
+            ("ram", format!("{:.0}", self.stats.ram)),
+            ("cpu", format!("{:.0}", self.stats.cpu)),
+        ];
+        for (label, value) in readouts.iter() {
+            ui.painter().text(
+                Pos2::new(right, rect.top() + 2.0),
+                Align2::RIGHT_TOP,
+                tracked(label),
+                micro_font(),
+                GHOST,
+            );
+            ui.painter().text(
+                Pos2::new(right, rect.top() + 15.0),
+                Align2::RIGHT_TOP,
+                value.clone(),
+                num_font(21.0),
+                TXT,
+            );
+            right -= 66.0;
+        }
     }
 
     fn job_strip(&mut self, ui: &mut Ui) {

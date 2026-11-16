@@ -68,7 +68,7 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
                     flip = true;
                 }
                 ui.add_space(10.0);
-                if theme::chip_button(ui, if open { "hide" } else { "plan" }, open).clicked() {
+                if theme::chip_button(ui, if open { "hide" } else { "details" }, open).clicked() {
                     plan_toggle = true;
                 }
                 ui.add_space(6.0);
@@ -262,7 +262,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                             theme::micro(ui, k);
                             ui.add_space(2.0);
                             ui.add(egui::Label::new(
-                                RichText::new(theme::clip(&v, 30))
+                                RichText::new(theme::clip(&v, 34))
                                     .font(mono_font(10.5))
                                     .color(DIM),
                             ));
