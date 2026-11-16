@@ -1509,16 +1509,6 @@ impl eframe::App for App {
         let now = ctx.input(|i| i.time);
         self.frames = self.frames.wrapping_add(1);
 
-        // Paper first: one rect under every panel and area, so no seam between
-        // the chrome and the deck can ever show the framebuffer behind it.
-        egui::Area::new(egui::Id::new("void.paper"))
-            .order(egui::Order::Background)
-            .fixed_pos(ctx.screen_rect().min)
-            .interactable(false)
-            .show(ctx, |ui| {
-                let r = ui.ctx().screen_rect();
-                ui.painter().rect_filled(r, 0.0, bg());
-            });
         // Audio is started on the second frame: the window is already on screen,
         // so a slow WASAPI device can never delay the first paint.
         if self.frames == 2 && !self.state.muted && self.state.volume > 0 {
