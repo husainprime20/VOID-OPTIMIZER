@@ -421,12 +421,12 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
     let p = ui.painter();
     p.circle_stroke(c, r, Stroke::new(1.0_f32, LINE));
 
-    let sweep = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
+    let arc = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
     let steps = 96;
     let mut prev: Option<Pos2> = None;
     for i in 0..=steps {
         let t = i as f32 / steps as f32;
-        if t * std::f32::consts::TAU > sweep {
+        if t * std::f32::consts::TAU > arc {
             break;
         }
         let ang = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::TAU;

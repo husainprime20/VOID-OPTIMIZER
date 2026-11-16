@@ -470,7 +470,7 @@ impl App {
             score.round().clamp(0.0, 100.0) as u32,
             parts
                 .into_iter()
-                .map(|(l, v, w, d)| (l, v, d))
+                .map(|(l, v, _w, d)| (l, v, d))
                 .collect::<Vec<(&'static str, f32, String)>>(),
         )
     }

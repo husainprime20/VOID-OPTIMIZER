@@ -3,7 +3,7 @@
 pub mod catalog_views;
 pub mod live;
 
-use eframe::egui::{self, Align, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2};
+use eframe::egui::{self, Align, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::app::{Action, App, Modal, View};
 use crate::engine::{self, catalog};

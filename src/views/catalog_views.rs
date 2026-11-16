@@ -1,6 +1,6 @@
 // VOID — catalog-driven views: optimizer, profiles, network, kernel.
 
-use eframe::egui::{self, Align, Align2, Layout, Pos2, RichText, Sense, Ui, Vec2};
+use eframe::egui::{self, Align, Align2, Layout, Pos2, Rect, RichText, Sense, Ui, Vec2};
 
 use crate::app::{Action, App, Modal};
 use crate::engine::{self, catalog};

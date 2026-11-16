@@ -1275,7 +1275,7 @@ fn emu_path(spec: &EmuSpec) -> Option<String> {
                 continue;
             }
             let candidate = if dir.to_ascii_lowercase().ends_with(".exe") {
-                dir
+                dir.clone()
             } else {
                 join_exe(&dir, spec.exe)
             };
