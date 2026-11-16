@@ -89,8 +89,36 @@ jobs:
           Write-Host "check ok"
 
       # Both binaries: the native window (VOID.exe) and the console companion.
+      # Same annotation trick as the check step: a link error must be readable
+      # without access to the CDN-hosted step log.
       - name: Build (release)
-        run: cargo build --release --bins
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo build --release --bins 2>&1 | Tee-Object -FilePath build.log | Out-Null
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $lines = Get-Content build.log
+            $blocks = @()
+            $cur = $null
+            foreach ($l in $lines) {
+              if ($l -match '^(error|warning: unused)') {
+                if ($cur) { $blocks += $cur }
+                $cur = $l
+              } elseif ($cur -and $l.Trim() -ne '' -and $blocks.Count -lt 12) {
+                $cur = $cur + ' ~~ ' + $l.Trim()
+                if ($cur.Length -gt 1200) { $blocks += $cur; $cur = $null }
+              }
+            }
+            if ($cur) { $blocks += $cur }
+            $i = 0
+            foreach ($b in ($blocks | Select-Object -First 10)) {
+              $i++
+              Write-Host ("::error title=Build error $i::" + ($b -replace '\|', '/'))
+            }
+            throw "release build failed ($code)"
+          }
+          Write-Host "build ok"
 
       - name: Smoke test
         shell: pwsh
@@ -132,7 +160,8 @@ jobs:
           $report = "no selftest report"
           if (Test-Path void-selftest.txt) { $report = Get-Content void-selftest.txt -Raw }
           $tail = "no check log"
-          if (Test-Path check.log) { $tail = ((Get-Content check.log -Tail 60) -join "`n") }
+          if (Test-Path build.log) { $tail = ((Get-Content build.log -Tail 60) -join "`n") }
+          elseif (Test-Path check.log) { $tail = ((Get-Content check.log -Tail 60) -join "`n") }
           $body = @"
           sha: $env:GITHUB_SHA
           run: $env:GITHUB_RUN_ID
