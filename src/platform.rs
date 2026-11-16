@@ -450,19 +450,29 @@ mod win {
     }
 
     fn hive(path: &str) -> Option<(Handle, Vec<u16>)> {
-        let (root, rest) = match path.split_once('\\') {
-            Some(v) => v,
-            None => (path, ""),
-        };
-        let key = match root.to_ascii_uppercase().as_str() {
-            "HKCU" | "HKEY_CURRENT_USER" => HKEY_CURRENT_USER,
-            "HKLM" | "HKEY_LOCAL_MACHINE" => HKEY_LOCAL_MACHINE,
-            "HKCR" | "HKEY_CLASSES_ROOT" => HKEY_CLASSES_ROOT,
-            "HKU" | "HKEY_USERS" => HKEY_USERS,
-            "HKCC" | "HKEY_CURRENT_CONFIG" => HKEY_CURRENT_CONFIG,
-            _ => return None,
-        };
-        Some((key, wide(rest)))
+        let upper = path.to_ascii_uppercase();
+        let known = [
+            ("HKCU", HKEY_CURRENT_USER),
+            ("HKEY_CURRENT_USER", HKEY_CURRENT_USER),
+            ("HKLM", HKEY_LOCAL_MACHINE),
+            ("HKEY_LOCAL_MACHINE", HKEY_LOCAL_MACHINE),
+            ("HKCR", HKEY_CLASSES_ROOT),
+            ("HKEY_CLASSES_ROOT", HKEY_CLASSES_ROOT),
+            ("HKU", HKEY_USERS),
+            ("HKEY_USERS", HKEY_USERS),
+            ("HKCC", HKEY_CURRENT_CONFIG),
+            ("HKEY_CURRENT_CONFIG", HKEY_CURRENT_CONFIG),
+        ];
+        for (prefix, handle) in known.iter() {
+            if upper == *prefix {
+                return Some((*handle, wide("")));
+            }
+            if upper.starts_with(prefix) && upper.as_bytes().get(prefix.len()) == Some(&b'\\') {
+                return Some((*handle, wide(&path[prefix.len() + 1..])));
+            }
+        }
+        // No explicit hive: HKLM is the only hive the identity reads use.
+        Some((HKEY_LOCAL_MACHINE, wide(path)))
     }
 
     /// (code, message) for a Win32 error.
