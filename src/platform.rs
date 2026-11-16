@@ -384,16 +384,13 @@ mod win {
         fn GetTickCount64() -> u64;
         fn GetActiveProcessorCount(group: u16) -> u32;
         fn SetProcessAffinityMask(process: Handle, mask: usize) -> i32;
+        fn LoadLibraryW(name: *const u16) -> Handle;
+        fn GetProcAddress(module: Handle, name: *const u8) -> *const c_void;
     }
 
     #[link(name = "powrprof")]
     extern "system" {
         fn PowerGetActiveScheme(root: *mut c_void, guid: *mut *mut u8) -> u32;
-    }
-
-    #[link(name = "srclient")]
-    extern "system" {
-        fn SRSetRestorePointW(info: *const RestorePointInfoW, status: *mut StateMgrStatus) -> i32;
     }
 
     const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
@@ -689,7 +686,31 @@ mod win {
         Some(s.to_ascii_lowercase())
     }
 
+    type SrFn = unsafe extern "system" fn(*const RestorePointInfoW, *mut StateMgrStatus) -> i32;
+
+    /// `SRSetRestorePointW` is exported by srclient.dll but *not* present in the
+    /// SDK import library, so it has to be bound at run time (this is also what
+    /// Windows' own system-restore UI does).
+    fn sr_proc() -> Option<SrFn> {
+        unsafe {
+            let dll = LoadLibraryW(wide("srclient.dll").as_ptr());
+            if dll == 0 {
+                return None;
+            }
+            let name = b"SRSetRestorePointW\0";
+            let proc = GetProcAddress(dll, name.as_ptr());
+            if proc.is_null() {
+                return None;
+            }
+            Some(std::mem::transmute::<*const c_void, SrFn>(proc))
+        }
+    }
+
     pub fn create_restore_point(desc: &str) -> Result<String, String> {
+        let call = match sr_proc() {
+            Some(f) => f,
+            None => return Err("srclient.dll is unavailable on this build".to_string()),
+        };
         let mut info = RestorePointInfoW {
             // BEGIN_SYSTEM_CHANGE / MODIFY_SETTINGS
             event_type: 100,
@@ -705,7 +726,7 @@ mod win {
             sequence: 0,
             bmid: [0u16; MAX_PATH],
         };
-        let ok = unsafe { SRSetRestorePointW(&info, &mut status) };
+        let ok = unsafe { call(&info, &mut status) };
         if status.status != 0 {
             let hint = match status.status {
                 0x8007_0000u32 => "system protection is turned off for this drive",
