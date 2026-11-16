@@ -20,6 +20,7 @@ pub const PRESETS: &[(&str, &str)] = &[
     ("Nocturne", "55 Hz drone · warm, slow, no pulse"),
     ("Aurora", "110 Hz air · brighter, wide stereo"),
     ("Cosmos", "detuned fifths · deep, meditative"),
+    ("Trauma", "41 Hz sub · pulsing, cinematic, heavy"),
 ];
 
 pub struct Ambient {
@@ -28,8 +29,12 @@ pub struct Ambient {
     pub playing: bool,
     pub volume: f32,
     pub preset: usize,
+    /// 0..1 — how much pulse and movement the bed carries.
+    pub intensity: f32,
     pub error: Option<String>,
     started: Option<std::time::Instant>,
+    /// when the current bed started: drives the 1.6 s gain ramp
+    fade_at: Option<std::time::Instant>,
 }
 
 impl Ambient {
@@ -40,8 +45,10 @@ impl Ambient {
             playing: false,
             volume: volume.clamp(0.0, 1.0),
             preset: preset.min(PRESETS.len() - 1),
+            intensity: 0.5,
             error: None,
             started: None,
+            fade_at: None,
         }
     }
 
@@ -80,13 +87,43 @@ impl Ambient {
         }
         if let Some(sink) = &self.sink {
             if sink.empty() {
-                sink.append(Bed::new(44_100, self.preset));
+                sink.append(Bed::new(44_100, self.preset, self.intensity));
             }
-            sink.set_volume(self.gain());
+            sink.set_volume(0.0);
             sink.play();
         }
         self.playing = true;
         self.started = Some(std::time::Instant::now());
+        self.fade_at = Some(std::time::Instant::now());
+    }
+
+    /// 0..1 gain ramp, so a preset change or a fresh start never clicks.
+    fn fade(&self) -> f32 {
+        match self.fade_at {
+            Some(t) => {
+                let e = (t.elapsed().as_secs_f32() / 1.6).clamp(0.0, 1.0);
+                e * e * (3.0 - 2.0 * e)
+            }
+            None => 1.0,
+        }
+    }
+
+    pub fn set_intensity(&mut self, v: f32) {
+        let v = v.clamp(0.0, 1.0);
+        if (v - self.intensity).abs() < 0.001 {
+            return;
+        }
+        self.intensity = v;
+        // the bed bakes intensity into its synthesis, so restart it
+        let was = self.playing;
+        if let Some(sink) = &self.sink {
+            sink.stop();
+            sink.clear();
+        }
+        self.sink = None;
+        if was {
+            self.play();
+        }
     }
 
     pub fn stop(&mut self) {
@@ -113,7 +150,7 @@ impl Ambient {
     pub fn set_volume(&mut self, v: f32) {
         self.volume = v.clamp(0.0, 1.0);
         if let Some(sink) = &self.sink {
-            sink.set_volume(self.gain());
+            sink.set_volume(self.gain() * self.fade());
         }
     }
 
@@ -135,9 +172,13 @@ impl Ambient {
     }
 
     /// A slow, fake VU for the settings page — tracks the drone's own LFO.
-    pub fn level(&self) -> f32 {
+    /// Also advances the fade ramp (called once per frame).
+    pub fn level(&mut self) -> f32 {
         if !self.playing {
             return 0.0;
+        }
+        if let Some(sink) = &self.sink {
+            sink.set_volume(self.gain() * self.fade());
         }
         let t = self
             .started
@@ -161,6 +202,8 @@ struct Bed {
     sr: u32,
     t: f64,
     preset: usize,
+    intensity: f32,
+    pulse_t: f64,
     lp: f32,
     rng: u32,
     bell_t: f64,
@@ -173,11 +216,13 @@ struct Bed {
 const BELL_NOTES: [f64; 5] = [220.0, 261.63, 329.63, 392.0, 440.0];
 
 impl Bed {
-    fn new(sr: u32, preset: usize) -> Self {
+    fn new(sr: u32, preset: usize, intensity: f32) -> Self {
         Self {
             sr,
             t: 0.0,
             preset,
+            intensity: intensity.clamp(0.0, 1.0),
+            pulse_t: 0.0,
             lp: 0.0,
             rng: 0x9E37_79B9,
             bell_t: 30.0,
@@ -202,8 +247,10 @@ impl Bed {
         let (root, air_amt, bell_amt): (f64, f32, f32) = match self.preset {
             1 => (110.0, 0.55, 0.004),
             2 => (73.42, 0.30, 0.010),
+            3 => (41.20, 0.46, 0.018),
             _ => (55.0, 0.22, 0.007),
         };
+        let bell_amt = bell_amt * (0.45 + 1.15 * self.intensity);
 
         // slow modulators (milli-Hz: these never line up, so it never loops)
         let lfo_a = ((t * 0.031) * TAU).sin() as f32;
@@ -246,10 +293,25 @@ impl Bed {
             0.0
         };
 
+        // TRAUMA: a sub-bass pulse clock plus a slow minor-second cluster.
+        // Nothing here is sampled — it is all synthesised from sines and noise.
+        let mut trauma = 0.0f32;
+        if self.preset == 3 {
+            self.pulse_t += dt;
+            let period = 8.5 - 3.5 * self.intensity as f64;
+            if self.pulse_t > period {
+                self.pulse_t = 0.0;
+            }
+            let env = (-self.pulse_t * 0.85).exp() as f32;
+            let thump = (t * 41.2 * TAU).sin() as f32 * env * (0.26 + 0.34 * self.intensity);
+            let glide = ((t * 43.65 * TAU).sin() as f32) * 0.07 * (0.4 + 0.6 * (lfo_b * 0.5 + 0.5));
+            trauma = thump + glide;
+        }
+
         let fade = (t / 6.0).min(1.0) as f32; // 6 s fade-in
         let breathe = 0.72 + 0.28 * (lfo_a * 0.5 + 0.5);
 
-        (body + fifth + air) * fade * breathe + bell * fade
+        (body + fifth + air) * fade * breathe + bell * fade + trauma * fade
     }
 }
 

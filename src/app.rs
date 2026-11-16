@@ -96,9 +96,12 @@ pub enum Action {
     RestorePoint,
     FlushDns,
     CleanTemp,
-    LaunchEmulator(&'static str),
+    LaunchEmulator(String),
     BoostPid(u32),
     Bench,
+    Ping,
+    /// One press: esports set, timer hold, net lab, benchmark.
+    MatchMode,
 }
 
 pub struct Modal {
@@ -164,6 +167,27 @@ pub struct App {
     pub aim_locked: bool,
     pub selftest_report: Option<String>,
 
+    /// Net lab results (handshake RTT per endpoint).
+    pub ping: Vec<engine::PingRow>,
+    pub ping_at: f64,
+    /// Bench scores across sessions.
+    pub bench_hist: Vec<f64>,
+    /// Animated catalog coverage, eased toward the real value.
+    pub cov: f32,
+    /// Cached timer resolution in ms (0.0 = unknown).
+    pub timer_ms: f32,
+    /// Eased cpu / memory percentages for the meters.
+    pub cpu_e: f32,
+    pub ram_e: f32,
+    /// Gliding rail indicator position.
+    pub nav_y: f32,
+    /// 0..1 sweep used as the "ignite" animation while a job runs.
+    pub sweep: f32,
+    /// When the current job started, for the sweep.
+    pub job_born: f64,
+    /// Queued work that runs after the current job finishes (match mode).
+    pub chain: Vec<Work>,
+
     /// The one worker job allowed at a time.
     pub job: Option<Job>,
     /// Last finished job summary, shown in the rail.
@@ -182,7 +206,8 @@ impl App {
         theme::install(&cc.egui_ctx);
         let state = State::new();
         let machine = Machine::detect();
-        let audio = Ambient::new(0, state.volume as f32 / 100.0);
+        let mut audio = Ambient::new(0, state.volume as f32 / 100.0);
+        audio.set_intensity(state.intensity as f32 / 100.0);
         // prime the CPU counters so the first painted frame has a real delta
         let primed = engine::sample();
         let stats = if primed.total_gb > 0.0 {
@@ -230,6 +255,17 @@ impl App {
             sens: 0.9,
             aim_locked: false,
             selftest_report: None,
+            ping: Vec::new(),
+            ping_at: -10.0,
+            bench_hist: engine::bench_history(),
+            cov: 0.0,
+            timer_ms: 0.0,
+            cpu_e: 0.0,
+            ram_e: 0.0,
+            nav_y: -1.0,
+            sweep: 1.0,
+            job_born: 0.0,
+            chain: Vec::new(),
             job: None,
             last_job: String::new(),
             live: HashMap::new(),
@@ -267,6 +303,8 @@ impl App {
         }
         let repaint_ctx = ctx.clone();
         let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(move || repaint_ctx.request_repaint());
+        self.job_born = self.started.elapsed().as_secs_f64();
+        self.sweep = 0.0;
         self.job = Some(Job::start(self.state.clone(), work, repaint));
     }
 
@@ -320,7 +358,7 @@ impl App {
             Action::RestorePoint => self.start(ctx, Work::Restore),
             Action::FlushDns => self.start(ctx, Work::Apply(vec!["net.dns".to_string()])),
             Action::CleanTemp => self.start(ctx, Work::Apply(vec!["disk.temp".to_string()])),
-            Action::LaunchEmulator(path) => match engine::launch_emulator(path) {
+            Action::LaunchEmulator(path) => match engine::launch_emulator(&path) {
                 Ok(m) => self.toast(0, m),
                 Err(e) => self.toast(2, e),
             },
@@ -329,24 +367,33 @@ impl App {
                 Err(e) => self.toast(2, format!("boost failed · {}", e)),
             },
             Action::Bench => self.start(ctx, Work::Bench),
+            Action::Ping => self.start(ctx, Work::Ping),
+            Action::MatchMode => {
+                self.chain = vec![Work::Ping, Work::Bench];
+                self.toast(1, "match mode · arming".to_string());
+                self.start(ctx, Work::Profile("esports"));
+            }
         }
     }
 
     /// Drain the worker and fold the result back into the shell.
-    fn pump_job(&mut self) {
-        let mut bench_result: Option<engine::BenchResult> = None;
+    fn pump_job(&mut self, cc: &egui::Context) {
         let mut finished: Option<(String, Vec<engine::Outcome>, State)> = None;
         if let Some(job) = self.job.as_mut() {
-            if let Some(b) = job.pump() {
-                bench_result = Some(b);
+            let event = job.pump();
+            if let Some(b) = event.bench {
+                if let Some(prev) = self.bench {
+                    self.bench_prev = Some(prev);
+                }
+                engine::record_bench(b.score);
+                self.bench_hist = engine::bench_history();
+                self.bench = Some(b);
+            }
+            if let Some(rows) = event.ping {
+                self.ping = rows;
+                self.ping_at = self.started.elapsed().as_secs_f64();
             }
             finished = job.take_finished();
-        }
-        if let Some(b) = bench_result {
-            if let Some(prev) = self.bench {
-                self.bench_prev = Some(prev);
-            }
-            self.bench = Some(b);
         }
         if let Some((label, outcomes, state)) = finished {
             let failed = outcomes.iter().filter(|o| !o.ok).count();
@@ -379,7 +426,53 @@ impl App {
             if label.to_lowercase().contains("benchmark") {
                 self.view = View::Monitor;
             }
+            // match mode: the queued steps run back to back
+            if let Some(next) = self.chain.first().cloned() {
+                self.chain.remove(0);
+                let ctx = cc.clone();
+                self.start(&ctx, next);
+            }
         }
+    }
+
+    /// The VOID score: one number for how ready this machine is to compete.
+    /// Every component is measured, nothing is guessed, and a component with
+    /// no measurement is dropped instead of being scored as zero.
+    pub fn score(&self) -> (u32, Vec<(&'static str, f32, String)>) {
+        let mut parts: Vec<(&'static str, f32, f32, String)> = Vec::new();
+
+        let total = engine::catalog::TWEAKS.len().max(1);
+        let ready = self.state.applied.len() as f32 / total as f32;
+        parts.push(("readiness", ready, 0.30, format!("{}/{}", self.state.applied.len(), total)));
+
+        if self.timer_ms > 0.0 {
+            let v = (1.0 - ((self.timer_ms - 0.5) / 14.5)).clamp(0.0, 1.0);
+            parts.push(("timer", v, 0.22, format!("{:.3} ms", self.timer_ms)));
+        }
+        if let Some(b) = self.bench.as_ref() {
+            let v = (1.0 - (b.jitter / 3.0)).clamp(0.0, 1.0) as f32;
+            parts.push(("jitter", v, 0.22, format!("{:.2} ms", b.jitter)));
+        }
+        let rows: Vec<&engine::PingRow> = self.ping.iter().filter(|r| r.ok).collect();
+        if !rows.is_empty() {
+            let avg = rows.iter().map(|r| r.avg).sum::<f64>() / rows.len() as f64;
+            let v = (1.0 - ((avg as f32 - 10.0) / 150.0)).clamp(0.0, 1.0);
+            parts.push(("net", v, 0.26, format!("{:.0} ms", avg)));
+        }
+
+        let weight: f32 = parts.iter().map(|p| p.2).sum();
+        let score = if weight > 0.0 {
+            parts.iter().map(|p| p.1 * p.2).sum::<f32>() / weight * 100.0
+        } else {
+            0.0
+        };
+        (
+            score.round().clamp(0.0, 100.0) as u32,
+            parts
+                .into_iter()
+                .map(|(l, v, w, d)| (l, v, d))
+                .collect::<Vec<(&'static str, f32, String)>>(),
+        )
     }
 
     fn poll(&mut self, ctx: &egui::Context, now: f64) {
@@ -387,6 +480,7 @@ impl App {
         if live && now - self.polled_at > 1.0 {
             self.polled_at = now;
             self.stats = engine::sample();
+            self.timer_ms = engine::timer_resolution_ms().unwrap_or(0.0) as f32;
             self.cpu_hist.push(self.stats.cpu as f32);
             self.ram_hist.push(self.stats.ram as f32);
             if self.cpu_hist.len() > 80 {
@@ -485,6 +579,14 @@ impl App {
                 self.set_view(*v, now);
             }
             ui.add_space(1.0);
+        }
+        if self.nav_y > 0.0 {
+            let x = ui.min_rect().left();
+            let bar = Rect::from_min_max(
+                Pos2::new(x, self.nav_y),
+                Pos2::new(x + 1.5, self.nav_y + 16.0),
+            );
+            ui.painter().rect_filled(bar, 1.0, WHITE);
         }
 
         // ── bottom: sound, engine state ──
@@ -593,11 +695,16 @@ impl App {
 
         if active {
             ui.painter().rect_filled(rect, 7.0, a(WHITE, 9));
-            let bar = Rect::from_min_max(
-                Pos2::new(rect.left(), rect.top() + 8.0),
-                Pos2::new(rect.left() + 1.5, rect.bottom() - 8.0),
-            );
-            ui.painter().rect_filled(bar, 1.0, WHITE);
+            // the indicator glides between items instead of snapping
+            let ty = rect.top() + 8.0;
+            if self.nav_y < 0.0 || !self.state.motion {
+                self.nav_y = ty;
+            } else {
+                self.nav_y += (ty - self.nav_y) * 0.22;
+                if (ty - self.nav_y).abs() < 0.3 {
+                    self.nav_y = ty;
+                }
+            }
         } else if t > 0.01 {
             ui.painter().rect_filled(rect, 7.0, a(WHITE, (t * 5.0) as u8));
         }
@@ -773,6 +880,16 @@ impl App {
             Pos2::new(track.left() + track.width() * p.max(0.02), track.bottom()),
         );
         ui.painter().rect_filled(fill, 0.0, a(WHITE, 200));
+        // a shimmer that travels along the filled part of the hairline
+        if self.state.motion && fill.width() > 12.0 {
+            let phase = (t * 0.55) % 1.0;
+            let sx = fill.left() + fill.width() * phase;
+            let glow = Rect::from_min_max(
+                Pos2::new((sx - 26.0).max(fill.left()), fill.top() - 1.0),
+                Pos2::new((sx + 26.0).min(fill.right()), fill.bottom() + 1.0),
+            );
+            ui.painter().rect_filled(glow, 0.0, a(WHITE, 60));
+        }
     }
 
     // ── overlays ────────────────────────────────────────────────────────────
@@ -799,7 +916,12 @@ impl App {
                     if alpha == 0 {
                         continue;
                     }
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(376.0, 40.0), Sense::hover());
+                    // slide in from the right, fade in fast
+                    ui.add_space((1.0 - appear) * 8.0);
+                    let (mut rect, _) =
+                        ui.allocate_exact_size(Vec2::new(376.0, 40.0), Sense::hover());
+                    rect = rect.translate(Vec2::new(-(1.0 - appear) * 26.0, 0.0));
+                    let life = (1.0 - (age - 3.8).max(0.0) / 0.8).clamp(0.0, 1.0) as f32;
                     let fill =
                         Color32::from_rgba_unmultiplied(13, 13, 16, (alpha as f32 * 0.97) as u8);
                     ui.painter().rect_filled(rect, 10.0, fill);
@@ -817,6 +939,21 @@ impl App {
                         Pos2::new(rect.left() + 16.0, rect.center().y),
                         3.0,
                         dot,
+                    );
+                    // life hairline: the toast visibly runs out of time
+                    let track = Rect::from_min_max(
+                        Pos2::new(rect.left() + 12.0, rect.bottom() - 2.0),
+                        Pos2::new(rect.right() - 12.0, rect.bottom() - 1.0),
+                    );
+                    ui.painter()
+                        .rect_filled(track, 0.0, a(WHITE, (14.0 * appear * fade) as u8));
+                    ui.painter().rect_filled(
+                        Rect::from_min_max(
+                            track.left_top(),
+                            Pos2::new(track.left() + track.width() * life, track.bottom()),
+                        ),
+                        0.0,
+                        a(WHITE, (110.0 * appear * fade) as u8),
                     );
                     ui.painter().text(
                         Pos2::new(rect.left() + 30.0, rect.center().y),
@@ -945,7 +1082,27 @@ impl eframe::App for App {
             self.audio.play();
         }
         self.poll(ctx, now);
-        self.pump_job();
+        self.pump_job(ctx);
+
+        // eased coverage ring — it slides to the new value, never jumps
+        let (applied, _) = self.tally();
+        let target = if engine::catalog::TWEAKS.is_empty() {
+            0.0
+        } else {
+            applied as f32 / engine::catalog::TWEAKS.len() as f32 * 100.0
+        };
+        self.cov += (target - self.cov) * 0.10;
+        let cpu = self.stats.cpu as f32;
+        let ram = self.stats.ram as f32;
+        self.cpu_e += (cpu - self.cpu_e) * 0.09;
+        self.ram_e += (ram - self.ram_e) * 0.09;
+        // ignite sweep while a job is running
+        if self.job.is_some() {
+            let age = self.started.elapsed().as_secs_f64() - self.job_born;
+            self.sweep = (age as f32 / 0.9).min(1.0);
+        } else if self.sweep < 1.0 {
+            self.sweep = (self.sweep + 0.06).min(1.0);
+        }
 
         // dust: slow specks behind everything, disabled with reduced motion
         if self.state.motion {

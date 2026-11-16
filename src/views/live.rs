@@ -32,10 +32,10 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
             app.emulators = engine::emulators();
         }
 
-        let rows: Vec<(String, bool, bool, &'static str)> = app
+        let rows: Vec<(String, bool, bool, String)> = app
             .emulators
             .iter()
-            .map(|e| (e.name.to_string(), e.installed, e.running, e.path))
+            .map(|e| (e.name.to_string(), e.installed, e.running, e.path.clone()))
             .collect();
 
         if rows.is_empty() {
@@ -60,7 +60,9 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 ));
                 ui.add_space(8.0);
                 ui.add(egui::Label::new(
-                    RichText::new(path).font(mono_font(9.5)).color(GHOST),
+                    RichText::new(theme::clip(&path, 58))
+                        .font(mono_font(9.5))
+                        .color(GHOST),
                 ));
                 ui.add_space(8.0);
                 theme::pill(
@@ -76,7 +78,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if installed && theme::chip_button(ui, "launch", false).clicked() {
-                        app.run_action(ui.ctx(), Action::LaunchEmulator(path));
+                        app.run_action(ui.ctx(), Action::LaunchEmulator(path.clone()));
                     }
                 });
             });
@@ -295,6 +297,32 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                         b.samples, delta
                     ),
                 );
+                if app.bench_hist.len() >= 2 {
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        theme::micro(ui, "trend");
+                        ui.add_space(8.0);
+                        theme::spark(
+                            ui,
+                            &app.bench_hist.iter().map(|v| *v as f32).collect::<Vec<f32>>(),
+                            Vec2::new(220.0, 26.0),
+                            100.0,
+                        );
+                        ui.add_space(8.0);
+                        ui.add(egui::Label::new(
+                            RichText::new(format!(
+                                "last {} runs · best {:.0}",
+                                app.bench_hist.len(),
+                                app.bench_hist
+                                    .iter()
+                                    .cloned()
+                                    .fold(0.0f64, f64::max)
+                            ))
+                            .font(micro_font())
+                            .color(GHOST),
+                        ));
+                    });
+                }
             }
             None => {
                 ui.add(egui::Label::new(
