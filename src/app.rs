@@ -533,19 +533,31 @@ impl App {
         let (mrect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
         let lvl = self.audio.level();
-        let bars = 22;
-        let step = mrect.width() / bars as f32;
-        for b in 0..bars {
-            let energy = (((b as f32 * 0.7).sin() * 0.5 + 0.5) * lvl).max(0.03);
-            let bh = 2.0 + 15.0 * energy;
-            let x = mrect.left() + b as f32 * step;
+        if lvl > 0.01 {
+            let bars = 22;
+            let step = mrect.width() / bars as f32;
+            for b in 0..bars {
+                let energy = ((b as f32 * 0.7).sin() * 0.5 + 0.5) * lvl;
+                let bh = 3.0 + 15.0 * energy;
+                let x = mrect.left() + b as f32 * step;
+                ui.painter().rect_filled(
+                    Rect::from_min_max(
+                        Pos2::new(x, mrect.bottom() - bh),
+                        Pos2::new(x + 3.0, mrect.bottom()),
+                    ),
+                    1.0,
+                    a(WHITE, 165),
+                );
+            }
+        } else {
+            // silence: a single hairline instead of a row of dead bars
             ui.painter().rect_filled(
                 Rect::from_min_max(
-                    Pos2::new(x, mrect.bottom() - bh),
-                    Pos2::new(x + 3.0, mrect.bottom()),
+                    Pos2::new(mrect.left(), mrect.center().y),
+                    Pos2::new(mrect.right(), mrect.center().y + 1.0),
                 ),
-                1.0,
-                a(WHITE, if lvl > 0.01 { 165 } else { 30 }),
+                0.0,
+                a(WHITE, 14),
             );
         }
 

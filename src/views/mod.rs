@@ -395,7 +395,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
         if games.is_empty() {
             ui.add(egui::Label::new(
                 RichText::new(
-                    "Quiet. VOID re-reads the process table every ten seconds and offers the matching loadout the moment a game starts.",
+                    "Quiet. VOID re-reads the process table every few seconds and offers the matching loadout the moment a game starts.",
                 )
                 .font(body_font())
                 .color(FAINT),
@@ -626,7 +626,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 });
                 if let Some(err) = &app.audio.error {
                     ui.add_space(8.0);
-                    let short: String = err.chars().take(78).collect();
+                    let short: String = err.chars().take(96).collect::<String>();
                     ui.add(egui::Label::new(
                         RichText::new(format!("audio: {}", short))
                             .font(mono_font(10.0))
