@@ -1155,18 +1155,14 @@ impl App {
                         ui.allocate_exact_size(Vec2::new(376.0, 40.0), Sense::hover());
                     rect = rect.translate(Vec2::new(-(1.0 - appear) * 26.0, 0.0));
                     let life = (1.0 - (age - 3.8).max(0.0) / 0.8).clamp(0.0, 1.0) as f32;
-                    let fill =
-                        Color32::from_rgba_unmultiplied(13, 13, 16, (alpha as f32 * 0.97) as u8);
+                    let fill = a(ink(), (alpha as f32 * 0.97) as u8);
                     ui.painter().rect_filled(rect, 10.0, fill);
-                    ui.painter().rect_stroke(
-                        rect,
-                        10.0,
-                        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(64, 64, 72, alpha)),
-                    );
+                    ui.painter()
+                        .rect_stroke(rect, 10.0, Stroke::new(1.0_f32, a(line2(), alpha)));
                     let dot = match t.kind {
-                        0 => Color32::from_rgba_unmultiplied(255, 255, 255, alpha),
-                        1 => Color32::from_rgba_unmultiplied(160, 160, 168, alpha),
-                        _ => Color32::from_rgba_unmultiplied(96, 96, 104, alpha),
+                        0 => a(txt(), alpha),
+                        1 => a(dim(), alpha),
+                        _ => a(ghost(), alpha),
                     };
                     ui.painter().circle_filled(
                         Pos2::new(rect.left() + 16.0, rect.center().y),
@@ -1193,7 +1189,7 @@ impl App {
                         Align2::LEFT_CENTER,
                         theme::clip(&t.msg, 64),
                         label_font(),
-                        Color32::from_rgba_unmultiplied(238, 238, 241, alpha),
+                        a(txt(), alpha),
                     );
                     ui.add_space(6.0);
                 }
@@ -1498,9 +1494,31 @@ impl App {
 }
 
 impl eframe::App for App {
+    /// The colour the GPU clears to before anything is drawn.
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        let c = bg();
+        [
+            c.r() as f32 / 255.0,
+            c.g() as f32 / 255.0,
+            c.b() as f32 / 255.0,
+            1.0,
+        ]
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let now = ctx.input(|i| i.time);
         self.frames = self.frames.wrapping_add(1);
+
+        // Paper first: one rect under every panel and area, so no seam between
+        // the chrome and the deck can ever show the framebuffer behind it.
+        egui::Area::new(egui::Id::new("void.paper"))
+            .order(egui::Order::Background)
+            .fixed_pos(ctx.screen_rect().min)
+            .interactable(false)
+            .show(ctx, |ui| {
+                let r = ui.ctx().screen_rect();
+                ui.painter().rect_filled(r, 0.0, bg());
+            });
         // Audio is started on the second frame: the window is already on screen,
         // so a slow WASAPI device can never delay the first paint.
         if self.frames == 2 && !self.state.muted && self.state.volume > 0 {
