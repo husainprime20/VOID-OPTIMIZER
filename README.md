@@ -96,6 +96,9 @@ documented way back.
   a Windows refresh can silently undo a tweak; the guard puts it back.
 * **Command palette.** `Ctrl/⌘+K` reaches every view, every action and every tweak in one
   box. `Ctrl/⌘+1…9` jumps between views. `Esc` closes everything.
+* **CPU attribution.** The monitor diffs `GetProcessTimes` per process between two samples, so
+  it can **name the process that ate the frame** — kernel + user time, ranked, with a one-click
+  boost for the top consumer. Task Manager shows you a percentage; VOID tells you who.
 * **Diagnostics export.** One markdown file with the machine, the score, the checklist, the
   applied catalog with the reason for each entry, and the tail of the journal — written to
   the data directory from the settings card or the palette.
