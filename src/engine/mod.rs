@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.3.0";
+pub const VERSION: &str = "0.4.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -57,6 +57,7 @@ pub struct State {
     pub applied: BTreeSet<String>,
     pub log: Vec<LogEntry>,
     pub volume: u8,
+    pub intensity: u8,
     pub muted: bool,
     pub motion: bool,
     pub auto_backup: bool,
@@ -89,6 +90,7 @@ impl State {
             applied: BTreeSet::new(),
             log: Vec::new(),
             volume: 34,
+            intensity: 55,
             muted: false,
             motion: true,
             auto_backup: true,
@@ -139,6 +141,7 @@ impl State {
                 let v = it.next().unwrap_or("").trim();
                 match k {
                     "volume" => self.volume = v.parse::<u8>().unwrap_or(self.volume).min(100),
+                    "intensity" => self.intensity = v.parse::<u8>().unwrap_or(self.intensity).min(100),
                     "muted" => self.muted = truthy(v),
                     "motion" => self.motion = truthy(v),
                     "auto_backup" => self.auto_backup = truthy(v),
@@ -158,8 +161,9 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\napplied={}\n",
+            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\napplied={}\n",
             self.volume,
+            self.intensity,
             if self.muted { 1 } else { 0 },
             if self.motion { 1 } else { 0 },
             if self.auto_backup { 1 } else { 0 },
@@ -174,6 +178,11 @@ impl State {
             "volume" => {
                 if let Ok(v) = value.parse::<u32>() {
                     self.volume = v.min(100) as u8;
+                }
+            }
+            "intensity" => {
+                if let Ok(v) = value.parse::<u32>() {
+                    self.intensity = v.min(100) as u8;
                 }
             }
             "muted" => self.muted = truthy(value),
@@ -441,6 +450,51 @@ fn run_special(state: &mut State, name: &str, revert: bool) -> (bool, String) {
             let (a, ma) = run_special(state, "ff_priority", false);
             let (b, mb) = run_special(state, "ff_affinity", false);
             (a || b, format!("{}  ·  {}", ma, mb))
+        }
+        "ff_gpu_pref" => {
+            if simulated() {
+                return (true, "simulated :: dedicated GPU preference".to_string());
+            }
+            match emulator_exe() {
+                Some(path) => match platform::set_gpu_preference(&path, true) {
+                    Ok(m) => (true, m),
+                    Err(e) => (false, e),
+                },
+                None => (
+                    false,
+                    "no emulator found — install MSI App Player, BlueStacks, LDPlayer…".to_string(),
+                ),
+            }
+        }
+        "ff_gpu_pref_reset" => {
+            if simulated() {
+                return (true, "simulated :: GPU preference cleared".to_string());
+            }
+            match emulator_exe() {
+                Some(path) => match platform::set_gpu_preference(&path, false) {
+                    Ok(m) => (true, m),
+                    Err(e) => (false, e),
+                },
+                None => (true, "no emulator found — nothing to clear".to_string()),
+            }
+        }
+        "timer_hold" => {
+            if simulated() {
+                return (true, "simulated :: timer held at 0.5 ms".to_string());
+            }
+            match platform::hold_timer(true) {
+                Ok(m) => (true, m),
+                Err(e) => (false, e),
+            }
+        }
+        "timer_release" => {
+            if simulated() {
+                return (true, "simulated :: timer released".to_string());
+            }
+            match platform::hold_timer(false) {
+                Ok(m) => (true, m),
+                Err(e) => (false, e),
+            }
         }
         "restore_point" => {
             if simulated() {
@@ -1066,22 +1120,195 @@ pub fn bench() -> BenchResult {
 
 pub struct Emulator {
     pub name: &'static str,
-    pub path: &'static str,
+    pub path: String,
     pub installed: bool,
     pub running: bool,
 }
 
-pub const EMULATORS: &[(&str, &str, &str)] = &[
-    ("BlueStacks 5", r"C:\Program Files\BlueStacks_nxt\HD-Player.exe", "HD-Player"),
-    ("BlueStacks 4", r"C:\Program Files\BlueStacks\HD-Player.exe", "HD-Player"),
-    ("LDPlayer 9", r"C:\LDPlayer\LDPlayer9\dnplayer.exe", "dnplayer"),
-    ("LDPlayer 4", r"C:\LDPlayer\LDPlayer4.0\dnplayer.exe", "dnplayer"),
-    ("MuMu Player 12", r"C:\Program Files\Netease\MuMuPlayer-12.0\shell\MuMuPlayer.exe", "MuMuPlayer"),
-    ("MEmu", r"C:\Program Files\Microvirt\MEmu\MEmu.exe", "MEmu"),
-    ("Nox", r"C:\Program Files (x86)\Nox\bin\Nox.exe", "Nox"),
-    ("GameLoop", r"C:\Program Files\Tencent\GameLoop\Launcher\GameLoop.exe", "GameLoop"),
-    ("Google Play Games", r"C:\Program Files\Google\Play Games\Bootstrapper.exe", "Bootstrapper"),
+/// How an emulator is found: a name, the player executable inside its install
+/// directory, and the places Windows records that directory.
+pub struct EmuSpec {
+    pub name: &'static str,
+    pub exe: &'static str,
+    /// Registry values that may hold the install directory.
+    pub reg: &'static [(&'static str, &'static str)],
+    /// Fallback install directories (with the exe appended).
+    pub paths: &'static [&'static str],
+}
+
+pub const EMULATORS: &[EmuSpec] = &[
+    EmuSpec {
+        name: "MSI App Player 5",
+        exe: "HD-Player.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\BlueStacks_msi5", "InstallDir"),
+            (r"HKLM\SOFTWARE\BlueStacks_msi5", "DataDir"),
+        ],
+        paths: &[
+            r"C:\Program Files\BlueStacks_msi5",
+            r"C:\Program Files\MSI\MSI App Player",
+            r"C:\Program Files (x86)\MSI\MSI App Player",
+            r"C:\Program Files\BlueStacks_msi5_nxt",
+        ],
+    },
+    EmuSpec {
+        name: "MSI App Player 4",
+        exe: "HD-Player.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\BlueStacks_msi2", "InstallDir"),
+            (r"HKLM\SOFTWARE\WOW6432Node\BlueStacks_msi2", "InstallDir"),
+        ],
+        paths: &[
+            r"C:\Program Files\BlueStacks_msi2",
+            r"C:\Program Files (x86)\BlueStacks_msi2",
+        ],
+    },
+    EmuSpec {
+        name: "BlueStacks 5",
+        exe: "HD-Player.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\BlueStacks_nxt", "InstallDir"),
+            (r"HKLM\SOFTWARE\BlueStacks_nxt", "UserDefinedDir"),
+        ],
+        paths: &[r"C:\Program Files\BlueStacks_nxt"],
+    },
+    EmuSpec {
+        name: "BlueStacks 4",
+        exe: "HD-Player.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\BlueStacks", "InstallDir"),
+            (r"HKLM\SOFTWARE\WOW6432Node\BlueStacks", "InstallDir"),
+        ],
+        paths: &[
+            r"C:\Program Files\BlueStacks",
+            r"C:\Program Files (x86)\BlueStacks",
+        ],
+    },
+    EmuSpec {
+        name: "LDPlayer 9",
+        exe: "dnplayer.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\leidian\ldplayer9", "InstallDir"),
+            (r"HKLM\SOFTWARE\WOW6432Node\leidian\ldplayer9", "InstallDir"),
+        ],
+        paths: &[
+            r"C:\LDPlayer\LDPlayer9",
+            r"D:\LDPlayer\LDPlayer9",
+            r"C:\Program Files\LDPlayer\LDPlayer9",
+        ],
+    },
+    EmuSpec {
+        name: "LDPlayer 5",
+        exe: "dnplayer.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\leidian\ldplayer", "InstallDir"),
+            (r"HKLM\SOFTWARE\WOW6432Node\leidian\ldplayer", "InstallDir"),
+        ],
+        paths: &[r"C:\LDPlayer\LDPlayer5", r"C:\LDPlayer\LDPlayer4.0"],
+    },
+    EmuSpec {
+        name: "MuMu Player 12",
+        exe: "MuMuPlayer.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\Netease\MuMuPlayer-12.0", "InstallDir"),
+            (r"HKLM\SOFTWARE\WOW6432Node\Netease\MuMuPlayer-12.0", "InstallDir"),
+        ],
+        paths: &[r"C:\Program Files\Netease\MuMuPlayer-12.0\shell"],
+    },
+    EmuSpec {
+        name: "MuMu Player 6",
+        exe: "NemuPlayer.exe",
+        reg: &[(r"HKLM\SOFTWARE\Netease\MuMu", "InstallDir")],
+        paths: &[r"C:\Program Files\Netease\MuMu\emulator\nemu\EmulatorShell"],
+    },
+    EmuSpec {
+        name: "MEmu",
+        exe: "MEmu.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\Microvirt\MEmu", "InstallPath"),
+            (r"HKLM\SOFTWARE\WOW6432Node\Microvirt\MEmu", "InstallPath"),
+        ],
+        paths: &[r"C:\Program Files\Microvirt\MEmu"],
+    },
+    EmuSpec {
+        name: "Nox",
+        exe: "Nox.exe",
+        reg: &[(r"HKLM\SOFTWARE\WOW6432Node\Nox", "InstallDir")],
+        paths: &[r"C:\Program Files (x86)\Nox\bin", r"C:\Program Files\Nox\bin"],
+    },
+    EmuSpec {
+        name: "GameLoop",
+        exe: "GameLoop.exe",
+        reg: &[
+            (r"HKLM\SOFTWARE\Tencent\GameLoop", "InstallPath"),
+            (r"HKLM\SOFTWARE\WOW6432Node\Tencent\GameLoop", "InstallPath"),
+        ],
+        paths: &[
+            r"C:\Program Files\Tencent\GameLoop\Launcher",
+            r"C:\Program Files (x86)\Tencent\GameLoop\Launcher",
+            r"C:\Program Files\SmartGame\GameLoop",
+        ],
+    },
+    EmuSpec {
+        name: "Google Play Games",
+        exe: "Bootstrapper.exe",
+        reg: &[(r"HKCU\SOFTWARE\Google\Play Games", "InstallLocation")],
+        paths: &[r"C:\Program Files\Google\Play Games"],
+    },
 ];
+
+fn join_exe(dir: &str, exe: &str) -> String {
+    if dir.ends_with('\\') {
+        format!("{}{}", dir, exe)
+    } else {
+        format!("{}\\{}", dir, exe)
+    }
+}
+
+/// Best-effort install location for one emulator: registry → known paths →
+/// Start-menu shortcut. Returns the launchable path.
+fn emu_path(spec: &EmuSpec) -> Option<String> {
+    for (key, value) in spec.reg.iter() {
+        if let Some(dir) = platform::reg_read_string(key, value) {
+            let dir = dir.trim().trim_end_matches('"').to_string();
+            if dir.is_empty() {
+                continue;
+            }
+            let candidate = if dir.to_ascii_lowercase().ends_with(".exe") {
+                dir.clone()
+            } else {
+                join_exe(&dir, spec.exe)
+            };
+            if platform::exists(&candidate) {
+                return Some(candidate);
+            }
+            // the player usually lives one level down (…\shell, …\Launcher)
+            for sub in ["shell", "Launcher", "bin", "canvas"] {
+                let deeper = format!("{}\\{}\\{}", dir.trim_end_matches('\\'), sub, spec.exe);
+                if platform::exists(&deeper) {
+                    return Some(deeper);
+                }
+            }
+        }
+    }
+    for dir in spec.paths.iter() {
+        let candidate = join_exe(dir, spec.exe);
+        if platform::exists(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Path of the first installed emulator, for the GPU-preference special.
+pub fn emulator_exe() -> Option<String> {
+    for spec in EMULATORS.iter() {
+        if let Some(path) = emu_path(spec) {
+            return Some(path);
+        }
+    }
+    None
+}
 
 pub fn emulators() -> Vec<Emulator> {
     // one process-table read, not nine PowerShell round-trips
@@ -1095,12 +1322,13 @@ pub fn emulators() -> Vec<Emulator> {
     };
     EMULATORS
         .iter()
-        .map(|(name, path, exe)| {
-            let needle = format!("{}.exe", exe.to_lowercase());
+        .map(|spec| {
+            let found = emu_path(spec);
+            let needle = spec.exe.to_lowercase();
             Emulator {
-                name,
-                path,
-                installed: platform::exists(path),
+                name: spec.name,
+                path: found.clone().unwrap_or_default(),
+                installed: found.is_some(),
                 running: running.iter().any(|p| p == &needle || p.starts_with(&needle)),
             }
         })
@@ -1110,17 +1338,15 @@ pub fn emulators() -> Vec<Emulator> {
 /// Raise the priority of whichever emulator is currently running.
 pub fn boost_emulator() -> Result<String, String> {
     let procs = platform::processes();
-    for (name, path, exe) in EMULATORS.iter() {
-        let needle = format!("{}.exe", exe.to_lowercase());
-        if let Some((pname, pid, _)) = procs
+    for spec in EMULATORS.iter() {
+        let needle = spec.exe.to_lowercase();
+        if let Some((_, pid, _)) = procs
             .iter()
             .find(|(p, _, _)| p.to_lowercase() == needle || p.to_lowercase().starts_with(&needle))
         {
             platform::set_priority(*pid, "High")
-                .map(|_| format!("{} boosted · pid {} · high", name, pid))
-                .map_err(|e| format!("{} ({}) · {}", name, pname, e))?;
-            let _ = path;
-            return Ok(format!("{} boosted · pid {}", name, pid));
+                .map_err(|e| format!("{} · {}", spec.name, e))?;
+            return Ok(format!("{} boosted · pid {}", spec.name, pid));
         }
     }
     Err("no emulator is running".to_string())
@@ -1213,6 +1439,7 @@ pub fn readiness(state: &State, machine: &Machine) -> f64 {
 use std::sync::mpsc;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub enum Work {
     Apply(Vec<String>),
     Revert(Vec<String>),
@@ -1220,6 +1447,7 @@ pub enum Work {
     RevertAll,
     Restore,
     Bench,
+    Ping,
 }
 
 impl Work {
@@ -1233,6 +1461,7 @@ impl Work {
             Work::RevertAll => "reverting everything".to_string(),
             Work::Restore => "system checkpoint".to_string(),
             Work::Bench => "sleep-jitter benchmark".to_string(),
+            Work::Ping => "net lab · handshake RTT".to_string(),
         }
     }
 }
@@ -1250,6 +1479,7 @@ pub enum JobMsg {
         note: String,
     },
     Bench(BenchResult),
+    Ping(Vec<PingRow>),
     Done {
         label: String,
         outcomes: Vec<Outcome>,
@@ -1301,6 +1531,40 @@ impl Job {
                     st.save();
                     let _ = tx.send(JobMsg::Done {
                         label: "sleep-jitter benchmark".to_string(),
+                        outcomes: Vec::new(),
+                        state: st.clone(),
+                    });
+                    paint();
+                }
+                Work::Ping => {
+                    let total = PING_TARGETS.len();
+                    let _ = tx.send(JobMsg::Begin {
+                        label: "net lab · handshake RTT".to_string(),
+                        total,
+                    });
+                    paint();
+                    let mut rows: Vec<PingRow> = Vec::new();
+                    for (i, (label, host, port)) in PING_TARGETS.iter().enumerate() {
+                        let (rtts, lost) = platform::tcp_ping(host, *port, 4);
+                        let row = PingRow::new(label, host, *port, rtts, lost);
+                        let _ = tx.send(JobMsg::Step {
+                            index: i,
+                            total,
+                            name: label.to_string(),
+                            ok: row.ok,
+                            note: if row.ok {
+                                format!("{:.0} ms · jitter {:.1}", row.avg, row.jitter)
+                            } else {
+                                "unreachable".to_string()
+                            },
+                        });
+                        rows.push(row);
+                        paint();
+                    }
+                    let _ = tx.send(JobMsg::Ping(rows));
+                    st.save();
+                    let _ = tx.send(JobMsg::Done {
+                        label: "net lab".to_string(),
                         outcomes: Vec::new(),
                         state: st.clone(),
                     });
@@ -1381,8 +1645,8 @@ impl Job {
     }
 
     /// Drain everything the worker has said so far.
-    pub fn pump(&mut self) -> Option<BenchResult> {
-        let mut bench_result = None;
+    pub fn pump(&mut self) -> JobEvent {
+        let mut event = JobEvent::default();
         loop {
             match self.rx.try_recv() {
                 Ok(JobMsg::Begin { label, total }) => {
@@ -1407,7 +1671,8 @@ impl Job {
                         self.notes.remove(0);
                     }
                 }
-                Ok(JobMsg::Bench(b)) => bench_result = Some(b),
+                Ok(JobMsg::Bench(b)) => event.bench = Some(b),
+                Ok(JobMsg::Ping(rows)) => event.ping = Some(rows),
                 Ok(JobMsg::Done {
                     label,
                     outcomes,
@@ -1420,12 +1685,111 @@ impl Job {
                 Err(_) => break,
             }
         }
-        bench_result
+        event
     }
 
     pub fn take_finished(&mut self) -> Option<(String, Vec<Outcome>, State)> {
         self.finished.take()
     }
+}
+
+/// What a worker produced during a `pump`.
+#[derive(Default)]
+pub struct JobEvent {
+    pub bench: Option<BenchResult>,
+    pub ping: Option<Vec<PingRow>>,
+}
+
+// ───────────────────────── net lab (handshake RTT) ─────────────────────────
+
+pub struct PingRow {
+    pub label: &'static str,
+    pub host: &'static str,
+    pub port: u16,
+    pub avg: f64,
+    pub jitter: f64,
+    pub loss: f64,
+    pub ok: bool,
+}
+
+impl PingRow {
+    fn new(label: &'static str, host: &'static str, port: u16, rtts: Vec<f64>, lost: usize) -> PingRow {
+        let total = rtts.len() + lost;
+        let avg = if rtts.is_empty() {
+            0.0
+        } else {
+            rtts.iter().sum::<f64>() / rtts.len() as f64
+        };
+        let jitter = if rtts.len() < 2 {
+            0.0
+        } else {
+            let mut worst = 0.0f64;
+            for w in rtts.windows(2) {
+                worst = worst.max((w[1] - w[0]).abs());
+            }
+            // mean absolute deviation is steadier than max for 4 samples
+            let mad = rtts.iter().map(|v| (v - avg).abs()).sum::<f64>() / rtts.len() as f64;
+            mad.max(worst * 0.5)
+        };
+        let loss = if total == 0 {
+            100.0
+        } else {
+            lost as f64 / total as f64 * 100.0
+        };
+        PingRow {
+            label,
+            host,
+            port,
+            avg,
+            jitter,
+            loss,
+            ok: !rtts.is_empty(),
+        }
+    }
+}
+
+/// Endpoints that matter to the games this app tunes.
+pub const PING_TARGETS: &[(&str, &str, u16)] = &[
+    ("Cloudflare baseline", "1.1.1.1", 443),
+    ("Valve / CS2", "api.steampowered.com", 443),
+    ("Riot / Valorant", "auth.riotgames.com", 443),
+    ("Epic / Fortnite", "launcher.epicgames.com", 443),
+    ("Garena / Free Fire", "www.garena.com", 443),
+];
+
+// ───────────────────────── bench history ─────────────────────────
+
+fn bench_log_path() -> std::path::PathBuf {
+    platform::data_dir().join("bench.log")
+}
+
+/// Record a score so the monitor can show a trend across sessions.
+pub fn record_bench(score: f64) {
+    use std::io::Write;
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(bench_log_path())
+    {
+        let _ = writeln!(f, "{:.1} {}", score, platform::epoch_secs());
+    }
+}
+
+/// Last 12 scores, oldest first.
+pub fn bench_history() -> Vec<f64> {
+    let text = match fs::read_to_string(bench_log_path()) {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+    let mut out: Vec<f64> = text
+        .lines()
+        .filter_map(|l| l.split_whitespace().next())
+        .filter_map(|v| v.parse::<f64>().ok())
+        .collect();
+    if out.len() > 12 {
+        out.drain(0..out.len() - 12);
+    }
+    out
 }
 
 fn run_list(

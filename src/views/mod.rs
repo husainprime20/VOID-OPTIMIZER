@@ -3,7 +3,7 @@
 pub mod catalog_views;
 pub mod live;
 
-use eframe::egui::{self, Align, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2};
+use eframe::egui::{self, Align, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::app::{Action, App, Modal, View};
 use crate::engine::{self, catalog};
@@ -191,11 +191,8 @@ fn stat_card(ui: &mut Ui, label: &str, value: String, unit: &str, hist: &[f32], 
 pub fn dashboard(app: &mut App, ui: &mut Ui) {
     let total = catalog::TWEAKS.len();
     let applied = app.state.applied.len();
-    let coverage = if total > 0 {
-        applied as f32 / total as f32 * 100.0
-    } else {
-        0.0
-    };
+    // eased, so the ring slides instead of snapping
+    let coverage = app.cov;
 
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -225,7 +222,16 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ));
                 ui.add_space(16.0);
                 ui.horizontal(|ui| {
-                    if theme::button(ui, "ignite", true).clicked() {
+                    if theme::button(ui, "match mode", true).clicked() {
+                        app.run_action(ui.ctx(), Action::MatchMode);
+                    }
+                    ui.add_space(8.0);
+                    if theme::chip_button(ui, "esports set", false).clicked() {
+                        let m = confirm_profile(app, "esports");
+                        app.modal = Some(m);
+                    }
+                    ui.add_space(8.0);
+                    if theme::chip_button(ui, "ignite", false).clicked() {
                         let m = confirm_profile(app, "competitive");
                         app.modal = Some(m);
                     }
@@ -272,7 +278,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 });
             });
             ui.add_space(12.0);
-            theme::ring(ui, coverage, 168.0, "readiness");
+            theme::ring_sweep(ui, coverage, 168.0, "readiness", app.sweep);
         });
     });
 
@@ -292,7 +298,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 stat_card(
                     ui,
                     "cpu load",
-                    format!("{:.0}", app.stats.cpu),
+                    format!("{:.0}", app.cpu_e),
                     "%",
                     &app.cpu_hist,
                     100.0,
@@ -495,8 +501,84 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     });
 
     ui.add_space(14.0);
+
+    // ── the VOID score: one measured number ──
+    let (score, parts) = app.score();
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+            ui.vertical(|ui| {
+                ui.set_width(168.0);
+                theme::micro(ui, "void score");
+                ui.add_space(2.0);
+                ui.horizontal(|ui| {
+                    ui.add(egui::Label::new(
+                        RichText::new(format!("{:03}", score))
+                            .font(num_font(48.0))
+                            .color(TXT),
+                    ));
+                    ui.add(egui::Label::new(
+                        RichText::new("/100").font(micro_font()).color(GHOST),
+                    ));
+                });
+                ui.add(egui::Label::new(
+                    RichText::new(match score {
+                        0..=39 => "cold",
+                        40..=64 => "warming",
+                        65..=84 => "sharp",
+                        _ => "match ready",
+                    })
+                    .font(label_font())
+                    .color(FAINT),
+                ));
+            });
+            ui.add_space(30.0);
+            ui.vertical(|ui| {
+                ui.set_width((ui.available_width() - 8.0).max(240.0));
+                for (label, v, detail) in parts {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Label::new(
+                            RichText::new(tracked(label))
+                                .font(micro_font())
+                                .color(FAINT),
+                        ));
+                        ui.add_space(8.0);
+                        let (rect, _) = ui.allocate_exact_size(
+                            Vec2::new((ui.available_width() - 78.0).max(60.0), 6.0),
+                            Sense::hover(),
+                        );
+                        ui.painter().rect_filled(rect, 3.0, a(WHITE, 14));
+                        let filled = egui::Rect::from_min_size(
+                            rect.min,
+                            Vec2::new(rect.width() * v.clamp(0.0, 1.0), rect.height()),
+                        );
+                        ui.painter().rect_filled(filled, 3.0, a(WHITE, 225));
+                        ui.add(egui::Label::new(
+                            RichText::new(detail).font(mono_font(10.0)).color(DIM),
+                        ));
+                    });
+                    ui.add_space(5.0);
+                }
+                ui.add(egui::Label::new(
+                    RichText::new(
+                        "Measured from your machine: applied share, kernel timer, sleep jitter, handshake RTT. Nothing is scored until it has been read back.",
+                    )
+                    .font(micro_font())
+                    .color(GHOST),
+                ));
+            });
+        });
+    });
+
+    ui.add_space(14.0);
     section(ui, "quick actions", |ui| {
         ui.horizontal_wrapped(|ui| {
+            if theme::chip_button(ui, "match mode", false).clicked() {
+                app.run_action(ui.ctx(), Action::MatchMode);
+            }
+            if theme::chip_button(ui, "net lab", false).clicked() {
+                app.run_action(ui.ctx(), Action::Ping);
+            }
             if theme::chip_button(ui, "flush dns", false).clicked() {
                 app.run_action(ui.ctx(), Action::FlushDns);
             }
@@ -624,6 +706,34 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                         }
                     }
                 });
+                ui.add_space(12.0);
+                let mut inten = app.audio.intensity;
+                ui.horizontal(|ui| {
+                    theme::micro(ui, "intensity");
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.add(egui::Label::new(
+                            RichText::new(format!("{}", (inten * 100.0).round() as i32))
+                                .font(mono_font(11.0))
+                                .color(DIM),
+                        ));
+                        ui.add_space(10.0);
+                        let w = (ui.available_width() - 40.0).max(80.0);
+                        if theme::slider(ui, &mut inten, w).changed() {
+                            app.audio.set_intensity(inten);
+                            app.state.intensity = (inten * 100.0).round() as u8;
+                            app.state.save();
+                        }
+                    });
+                });
+                ui.add_space(4.0);
+                ui.add(egui::Label::new(
+                    RichText::new(
+                        "Intensity drives the pulse depth and the bell density. Trauma is the heaviest bed.",
+                    )
+                    .font(micro_font())
+                    .color(GHOST),
+                ));
+
                 if let Some(err) = &app.audio.error {
                     ui.add_space(8.0);
                     let short: String = err.chars().take(96).collect::<String>();

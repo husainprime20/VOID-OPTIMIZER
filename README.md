@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.3.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
+`v0.4.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -68,7 +68,7 @@ documented way back.
 | view | what it does |
 |---|---|
 | **01 Dashboard** | catalog coverage ring, CPU/RAM sparklines, applied stack, live journal, quick actions |
-| **02 Optimizer** | all 42 tweaks, searchable, filterable by lane and risk; every entry shows its exact plan |
+| **02 Optimizer** | all 85 tweaks, searchable, filterable by lane and risk; every entry shows its exact plan |
 | **03 Profiles** | 7 curated loadouts (competitive, free fire, latency, gpu, kernel, stream, bench) |
 | **04 Free Fire** | detects BlueStacks / LDPlayer / MuMu / MEmu / Nox / GameLoop, launches and boosts them |
 | **05 Network** | Nagle off, MMCSS Games task, throttling index, DNS flush, queue-shape sketch |
@@ -77,6 +77,42 @@ documented way back.
 | **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
+
+### What's new in 0.4.0
+
+* **43 more optimizations — 85 in total.** New lanes and entries that were not in 0.3.0:
+  QoS reserved bandwidth, `NetworkThrottlingIndex`, the ephemeral port pool, IPv6 stack,
+  network discovery, notification silence, offline start search, WER, Store auto-updates,
+  AutoPlay, widgets feeds, Edge preload, lock-screen rotation, Copilot, taskbar chat, pen
+  services, static screen saver, forced Game Mode, startup stagger, Wi-Fi power save,
+  Wi-Fi adapter online, aggressive core boost, uncapped usable cores, longer TDR watchdog,
+  MMCSS Games task, global timer resolution, GPU preference per game exe, mouse/keyboard
+  queue sizes, audio ducking, MMCSS audio task, initial RTO, LLMNR, Teredo, WDDM coalescing,
+  Spectre/Meltdown override, hibernate file, delivery optimization and system cache tuning.
+  Every one of them is reversible and read back from Windows after it is written.
+* **MSI App Player 5 and eleven other emulators.** The emulator table is now a registry-first
+  probe: MSI App Player 5 (`BlueStacks_msi5`) and 4 (`BlueStacks_msi2`), BlueStacks 5 / 4,
+  LDPlayer 9 / 5, MuMu 12 / 6, MEmu, Nox, GameLoop and Google Play Games. VOID finds the
+  install from the registry, falls back to the known install paths, and can launch, detect
+  and boost whichever instance is running — including the `Launcher` sub-shell MSI ships.
+* **Net Lab.** A new measurement nobody else ships in an optimizer: four TCP handshakes to
+  `1.1.1.1`, Steam, Riot, Epic and Garena, reported as average RTT, jitter and loss per
+  endpoint. It measures the same path a game client walks, needs no driver and no elevation.
+* **VOID Score.** One number for how ready the machine is to compete, built only from
+  measurements that actually succeeded: applied share of the catalog, the kernel timer
+  resolution, sleep jitter from the benchmark, and handshake RTT from Net Lab. Missing
+  measurements are dropped, never scored as zero.
+* **Match Mode.** One press runs the whole routine in sequence — the esports set, then Net
+  Lab, then a fresh benchmark — with the job strip reporting each step and the chain
+  continuing automatically when the previous job finishes.
+* **Bench history.** The last twelve benchmark scores persist to `data_dir/bench.log` and are
+  drawn as a trend sparkline, so you can see whether a session actually helped.
+* **Trauma.** A fourth ambient bed built around a 41 Hz sub with a slow glide thump, a
+  1.6-second fade-in, and an intensity control that scales pulse depth and bell density.
+* **More motion, still monochrome.** The readiness ring now eases instead of jumping and
+  carries an ignite scanline while a job runs; the rail indicator glides between items;
+  meters ease toward their values; toasts slide in and carry a life hairline; the job strip
+  has a travelling shimmer.
 
 ### What's new in 0.3.0
 
@@ -184,7 +220,7 @@ src/
   audio.rs            synthesised ambient bed (rodio, zero samples shipped)
   engine/
     mod.rs            state, apply/revert, telemetry, benchmark, emulator + process control
-    catalog.rs        42 tweaks, 9 lanes, 7 profiles — every action documented & reversible
+    catalog.rs        85 tweaks, 10 lanes, 9 profiles — every action documented & reversible
   platform.rs         process exec (no console), elevation, timer resolution, tasklist, UAC
 assets/ui/            legacy web preview — kept for design comparison, not shipped in the app
 tools/preview.py      dev mirror of the legacy preview (used while designing the native UI)

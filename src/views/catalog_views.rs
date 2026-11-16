@@ -1,6 +1,6 @@
 // VOID — catalog-driven views: optimizer, profiles, network, kernel.
 
-use eframe::egui::{self, Align, Layout, RichText, Sense, Ui, Vec2};
+use eframe::egui::{self, Align, Align2, Layout, Pos2, Rect, RichText, Sense, Ui, Vec2};
 
 use crate::app::{Action, App, Modal};
 use crate::engine::{self, catalog};
@@ -236,6 +236,8 @@ fn profile_card(app: &mut App, ui: &mut Ui, p: &'static catalog::Profile) {
 // ── network ──────────────────────────────────────────────────────────────────
 
 pub fn network(app: &mut App, ui: &mut Ui) {
+    net_lab(app, ui);
+    ui.add_space(14.0);
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
@@ -363,4 +365,108 @@ pub fn kernel(app: &mut App, ui: &mut Ui) {
 #[allow(dead_code)]
 fn _keep(ui: &mut Ui) {
     risk_pill(ui, 0);
+}
+
+// ── net lab ──────────────────────────────────────────────────────────────────
+
+/// Handshake RTT to the endpoints the tuned games actually talk to. This is a
+/// TCP connect, not ICMP: it measures the same path a game client walks, and it
+/// needs no driver, no admin and no external tool.
+pub fn net_lab(app: &mut App, ui: &mut Ui) {
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "net lab");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if app.busy() {
+                    theme::pill(ui, "measuring", false);
+                } else if theme::chip_button(ui, "run net lab", false).clicked() {
+                    app.run_action(ui.ctx(), Action::Ping);
+                }
+            });
+        });
+        ui.add_space(4.0);
+        ui.add(egui::Label::new(
+            RichText::new("Handshake RTT to the game endpoints, four samples each. Jitter is the mean deviation.")
+                .font(micro_font())
+                .color(GHOST),
+        ));
+        ui.add_space(10.0);
+
+        if app.ping.is_empty() {
+            ui.add(egui::Label::new(
+                RichText::new("Not measured yet. The lab runs in the background and takes a few seconds.")
+                    .font(body_font())
+                    .color(FAINT),
+            ));
+            return;
+        }
+
+        let max_ms = 160.0f32;
+        for row in app.ping.iter() {
+            let (rect, _) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width(), 26.0),
+                Sense::hover(),
+            );
+            let y = rect.center().y;
+            ui.painter().text(
+                Pos2::new(rect.left(), y),
+                Align2::LEFT_CENTER,
+                row.label,
+                label_font(),
+                if row.ok { TXT } else { GHOST },
+            );
+            ui.painter().text(
+                Pos2::new(rect.left() + 190.0, y),
+                Align2::LEFT_CENTER,
+                theme::clip(row.host, 34),
+                mono_font(9.5),
+                GHOST,
+            );
+            // bar
+            let bar = Rect::from_min_size(
+                Pos2::new(rect.left() + 400.0, y - 3.0),
+                Vec2::new(240.0, 6.0),
+            );
+            ui.painter().rect_filled(bar, 3.0, a(WHITE, 12));
+            if row.ok {
+                let w = (row.avg as f32 / max_ms).clamp(0.02, 1.0) * bar.width();
+                ui.painter().rect_filled(
+                    Rect::from_min_size(bar.min, Vec2::new(w, bar.height())),
+                    3.0,
+                    if row.avg < 40.0 { a(WHITE, 235) } else { a(WHITE, 150) },
+                );
+            }
+            let value = if row.ok {
+                format!("{:.0} ms", row.avg)
+            } else {
+                "unreachable".to_string()
+            };
+            ui.painter().text(
+                Pos2::new(rect.right(), y),
+                Align2::RIGHT_CENTER,
+                value,
+                mono_font(11.0),
+                if row.ok { TXT } else { FAINT },
+            );
+            ui.painter().text(
+                Pos2::new(rect.right() - 84.0, y),
+                Align2::RIGHT_CENTER,
+                if row.ok {
+                    format!("±{:.1}", row.jitter)
+                } else {
+                    String::new()
+                },
+                mono_font(10.0),
+                FAINT,
+            );
+            ui.painter().text(
+                Pos2::new(rect.right() - 132.0, y),
+                Align2::RIGHT_CENTER,
+                format!("{:.0}% loss", row.loss),
+                mono_font(10.0),
+                if row.loss > 0.0 { DIM } else { GHOST },
+            );
+        }
+    });
 }

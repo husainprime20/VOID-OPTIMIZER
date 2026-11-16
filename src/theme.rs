@@ -410,18 +410,23 @@ pub fn slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
 
 /// Animated readiness ring.
 pub fn ring(ui: &mut Ui, pct: f32, size: f32, caption: &str) {
+    ring_sweep(ui, pct, size, caption, 1.0)
+}
+
+/// Ring plus an "ignite" scanline: `sweep` runs 0 -> 1 while a job is applying.
+pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let c = rect.center();
     let r = size * 0.5 - 10.0;
     let p = ui.painter();
     p.circle_stroke(c, r, Stroke::new(1.0_f32, LINE));
 
-    let sweep = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
+    let arc = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
     let steps = 96;
     let mut prev: Option<Pos2> = None;
     for i in 0..=steps {
         let t = i as f32 / steps as f32;
-        if t * std::f32::consts::TAU > sweep {
+        if t * std::f32::consts::TAU > arc {
             break;
         }
         let ang = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::TAU;
@@ -440,6 +445,23 @@ pub fn ring(ui: &mut Ui, pct: f32, size: f32, caption: &str) {
     );
     let cap = Pos2::new(c.x, c.y + size * 0.15);
     p.text(cap, Align2::CENTER_CENTER, tracked(caption), micro_font(), FAINT);
+
+    if sweep < 1.0 {
+        let y = rect.top() + 8.0 + (size - 16.0) * sweep;
+        let fade = (1.0 - sweep) * 200.0;
+        p.line_segment(
+            [
+                Pos2::new(rect.left() + 6.0, y),
+                Pos2::new(rect.right() - 6.0, y),
+            ],
+            Stroke::new(1.0_f32, a(WHITE, fade as u8)),
+        );
+        p.circle_filled(
+            Pos2::new(rect.right() - 6.0, y),
+            2.0,
+            a(WHITE, (fade + 40.0).min(255.0) as u8),
+        );
+    }
 }
 
 /// Sparkline with a soft fill under the curve.

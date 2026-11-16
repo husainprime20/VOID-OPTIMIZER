@@ -871,6 +871,7 @@ mod shell {
     #[link(name = "ntdll")]
     extern "system" {
         pub fn NtQueryTimerResolution(min: *mut u32, max: *mut u32, cur: *mut u32) -> i32;
+        pub fn NtSetTimerResolution(desired: u32, set: u8, current: *mut u32) -> i32;
     }
 }
 
@@ -955,6 +956,79 @@ pub fn timer_resolution_ms() -> Option<f64> {
 #[cfg(not(windows))]
 pub fn timer_resolution_ms() -> Option<f64> {
     None
+}
+
+/// Hold (or release) a 0.5 ms system timer for the lifetime of this process.
+/// Windows reverts it automatically when VOID exits.
+#[cfg(windows)]
+pub fn hold_timer(on: bool) -> Result<String, String> {
+    let mut current = 0u32;
+    let status = unsafe { shell::NtSetTimerResolution(5000, if on { 1 } else { 0 }, &mut current) };
+    if status != 0 {
+        return Err(format!(
+            "ntdll refused the request ({:#x}) — try running as Administrator",
+            status as u32
+        ));
+    }
+    Ok(format!(
+        "timer {} at {:.3} ms",
+        if on { "held" } else { "released" },
+        current as f64 / 10_000.0
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn hold_timer(_on: bool) -> Result<String, String> {
+    Err("timer resolution is Windows-only".to_string())
+}
+
+/// Point Windows' per-app graphics preference at High performance (2) or back
+/// to "let Windows decide" (delete the value).
+pub fn set_gpu_preference(exe: &str, high: bool) -> Result<String, String> {
+    const KEY: &str = r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences";
+    if high {
+        match reg_write(KEY, exe, RegKind::Str, "GpuPreference=2;") {
+            Ok(verified) => Ok(format!(
+                "{} -> dedicated GPU{}",
+                exe,
+                if verified { " (verified)" } else { "" }
+            )),
+            Err(e) => Err(e),
+        }
+    } else {
+        reg_delete(KEY, exe).map(|_| format!("{} -> automatic", exe))
+    }
+}
+
+/// One TCP handshake round-trip in milliseconds. Uses the std stack, so it
+/// measures the same path a game client takes.
+pub fn tcp_rtt(addr: std::net::SocketAddr) -> Option<f64> {
+    let t0 = std::time::Instant::now();
+    match std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(900)) {
+        Ok(_) => Some(t0.elapsed().as_secs_f64() * 1000.0),
+        Err(_) => None,
+    }
+}
+
+/// Resolve `host:port` once, then take `n` handshakes.
+pub fn tcp_ping(host: &str, port: u16, n: usize) -> (Vec<f64>, usize) {
+    use std::net::ToSocketAddrs;
+    let addr = match (host, port).to_socket_addrs() {
+        Ok(mut it) => match it.next() {
+            Some(a) => a,
+            None => return (Vec::new(), n),
+        },
+        Err(_) => return (Vec::new(), n),
+    };
+    let mut rtts: Vec<f64> = Vec::new();
+    let mut lost = 0usize;
+    for _ in 0..n {
+        match tcp_rtt(addr) {
+            Some(ms) => rtts.push(ms),
+            None => lost += 1,
+        }
+    }
+    (rtts, lost)
 }
 
 /// Active Windows power plan — resolved from the live GUID, no subprocess.
