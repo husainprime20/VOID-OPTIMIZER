@@ -838,7 +838,7 @@ mod win {
                         let mut kernel = super::FileTime::default();
                         let mut user = super::FileTime::default();
                         if super::kern::GetProcessTimes(
-                            handle,
+                            handle as *mut std::ffi::c_void,
                             &mut created,
                             &mut exited,
                             &mut kernel,
