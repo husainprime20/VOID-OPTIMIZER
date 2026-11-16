@@ -267,14 +267,14 @@ pub fn network(app: &mut App, ui: &mut Ui) {
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     if theme::button(ui, "measure", false).clicked() {
-                        app.run_action(Action::Bench);
+                        app.run_action(ui.ctx(), Action::Bench);
                     }
                     if theme::chip_button(ui, "flush dns", false).clicked() {
-                        app.run_action(Action::FlushDns);
+                        app.run_action(ui.ctx(), Action::FlushDns);
                     }
                     if theme::chip_button(ui, "reset tcp", false).clicked() {
                         let ids = vec!["net.nagle".to_string()];
-                        app.revert_set(ids, "nagle");
+                        app.revert_set(ui.ctx(), ids);
                     }
                 });
             });
@@ -334,7 +334,7 @@ pub fn kernel(app: &mut App, ui: &mut Ui) {
                 ));
             });
             if theme::chip_button(ui, "restore point", false).clicked() {
-                app.run_action(Action::RestorePoint);
+                app.run_action(ui.ctx(), Action::RestorePoint);
             }
         });
         ui.add_space(10.0);

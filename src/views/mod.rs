@@ -85,6 +85,11 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
                         if t.reboot {
                             theme::pill(ui, "reboot", false);
                         }
+                        match app.live_state(t.id) {
+                            Some(true) => theme::pill(ui, "live", true),
+                            Some(false) if on => theme::pill(ui, "drift", false),
+                            _ => {}
+                        }
                     });
                     ui.add_space(4.0);
                     ui.add(egui::Label::new(
@@ -138,7 +143,7 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
         app.expanded = if open { None } else { Some(t.id) };
     }
     if flip {
-        app.toggle_tweak(t.id);
+        app.toggle_tweak(ui.ctx(), t.id);
     }
     ui.add_space(6.0);
 }
@@ -210,11 +215,10 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.add_space(2.0);
                 ui.add(egui::Label::new(
                     RichText::new(format!(
-                        "{} of {} tweaks applied · {} profile{} on disk",
+                        "{} applied · {} verified on this machine · {} profiles",
                         applied,
-                        total,
-                        catalog::PROFILES.len(),
-                        if catalog::PROFILES.len() == 1 { "" } else { "s" }
+                        app.tally().1,
+                        catalog::PROFILES.len()
                     ))
                     .font(body_font())
                     .color(FAINT),
@@ -334,7 +338,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                     });
                     ui.add_space(6.0);
                     if theme::button(ui, "run bench", false).clicked() {
-                        app.run_action(Action::Bench);
+                        app.run_action(ui.ctx(), Action::Bench);
                     }
                 });
             },
@@ -463,7 +467,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                     theme::micro(ui, "journal");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if theme::chip_button(ui, "bench", false).clicked() {
-                            app.run_action(Action::Bench);
+                            app.run_action(ui.ctx(), Action::Bench);
                         }
                     });
                 });
@@ -494,20 +498,17 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     section(ui, "quick actions", |ui| {
         ui.horizontal_wrapped(|ui| {
             if theme::chip_button(ui, "flush dns", false).clicked() {
-                app.run_action(Action::FlushDns);
+                app.run_action(ui.ctx(), Action::FlushDns);
             }
             if theme::chip_button(ui, "clean temp", false).clicked() {
-                app.run_action(Action::CleanTemp);
+                app.run_action(ui.ctx(), Action::CleanTemp);
             }
             if theme::chip_button(ui, "restore point", false).clicked() {
-                app.run_action(Action::RestorePoint);
+                app.run_action(ui.ctx(), Action::RestorePoint);
             }
-            let mut dry = app.state.dry_run;
-            if theme::chip_button(ui, "dry run", dry).clicked() {
-                dry = !dry;
-                app.state.dry_run = dry;
-                app.state.save();
-                app.toast(1, if dry { "dry run on" } else { "dry run off" });
+            if theme::chip_button(ui, "verify now", false).clicked() {
+                app.live_at = -10.0;
+                app.toast(0, "re-reading every value from Windows");
             }
             let mut motion = app.state.motion;
             if theme::chip_button(ui, "motion", motion).clicked() {
@@ -535,19 +536,20 @@ pub fn confirm_profile(app: &App, pid: &'static str) -> Modal {
                 .unwrap_or_else(|| id.to_string())
         })
         .collect();
-    let sim = app.state.sim();
+    let already = p.tweaks.iter().filter(|id| app.state.applied.contains(**id)).count();
     Modal {
         kicker: "engage profile".into(),
         title: p.name.to_string(),
-        body: if sim {
-            format!(
-                "{} — {} steps. Dry run is on, so every command is logged, not executed.",
-                p.note,
-                plan.len()
-            )
-        } else {
-            format!("{} — {} steps on this machine.", p.note, plan.len())
-        },
+        body: format!(
+            "{} — {} steps.{} Everything is re-read from the registry afterwards, so what you see is what Windows holds.",
+            p.note,
+            plan.len(),
+            if already > 0 {
+                format!(" {} already applied.", already)
+            } else {
+                String::new()
+            }
+        ),
         plan,
         ok: "Engage".into(),
         cancel: "Cancel".into(),
@@ -641,8 +643,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.add_space(10.0);
                 let mut rows: Vec<(&str, bool, String)> = Vec::new();
                 rows.push(("Reduced motion", !app.state.motion, "stops dust, pulses and easing".into()));
-                rows.push(("Dry run", app.state.dry_run, "plan only — nothing is written".into()));
-                rows.push(("Auto restore point", app.state.auto_backup, "checkpoint before any profile".into()));
+                rows.push(("Checkpoint before advanced", app.state.auto_backup, "srclient checkpoint, ~0.2 s".into()));
                 for (label, on, hint) in rows {
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -650,7 +651,6 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                             if theme::toggle(ui, &mut v).changed() {
                                 match label {
                                     "Reduced motion" => app.state.motion = !app.state.motion,
-                                    "Dry run" => app.state.dry_run = !app.state.dry_run,
                                     _ => app.state.auto_backup = !app.state.auto_backup,
                                 }
                                 app.state.save();
@@ -716,18 +716,17 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.add_space(10.0);
                 ui.horizontal_wrapped(|ui| {
                     if theme::chip_button(ui, "restore point", false).clicked() {
-                        app.run_action(Action::RestorePoint);
+                        app.run_action(ui.ctx(), Action::RestorePoint);
                     }
                     if theme::chip_button(ui, "revert all", false).clicked() {
-                        app.run_action(Action::RevertAll);
+                        app.run_action(ui.ctx(), Action::RevertAll);
                     }
                     if theme::chip_button(ui, "open journal", false).clicked() {
                         let path = crate::platform::data_dir().join("void.log");
-                        let _ = crate::platform::powershell(&format!(
-                            "Start-Process notepad '{}'",
-                            path.display()
-                        ));
-                        app.toast(1, format!("journal · {}", path.display()));
+                        match crate::platform::spawn_detached(&path.to_string_lossy()) {
+                            Ok(_) => app.toast(1, format!("journal · {}", path.display())),
+                            Err(e) => app.toast(2, format!("journal · {} · {}", path.display(), e)),
+                        }
                     }
                 });
                 ui.add_space(10.0);

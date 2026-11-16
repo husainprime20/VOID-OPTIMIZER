@@ -3,8 +3,12 @@
 // No console window: the binary is built for the Windows GUI subsystem, so the
 // only thing that appears when you double-click VOID.exe is the window itself.
 // All helper processes it spawns are created with CREATE_NO_WINDOW (see
-// `platform::hide_console`), so `reg`, `sc`, `powercfg` and PowerShell never
+// `platform::hide_console`), so `powercfg`, `bcdedit`, `sc` and `netsh` never
 // flash a black rectangle either.
+//
+// Launch path: no subprocess at all. Machine identity and privileges come from
+// the registry and the process token, so the window is on screen in a few
+// hundred milliseconds — the only wait is the Windows UAC prompt.
 //
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -19,11 +23,12 @@ mod views;
 use eframe::egui;
 
 fn main() -> eframe::Result<()> {
+    let boot = std::time::Instant::now();
     let args: Vec<String> = std::env::args().skip(1).collect();
     install_panic_hook();
 
     if args.iter().any(|a| a == "--selftest") {
-        std::process::exit(selftest());
+        std::process::exit(selftest(boot));
     }
 
     // Elevate once, at launch. If the user declines UAC we still open the
@@ -51,11 +56,20 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let made = eframe::run_native(
         "VOID",
         options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc)) as Box<dyn eframe::App>)),
-    )
+    );
+    // A cold launch should be well under a second; keep the number on disk so
+    // regressions are visible in CI and in the player's own log.
+    let ms = boot.elapsed().as_secs_f64() * 1000.0;
+    if let Ok(dir) = std::env::var("APPDATA") {
+        let path = std::path::Path::new(&dir).join("VOID");
+        let _ = std::fs::create_dir_all(&path);
+        let _ = std::fs::write(path.join("boot.ms"), format!("{:.0}", ms));
+    }
+    made
 }
 
 /// A crash should leave a note, not a disappearing window.
@@ -83,9 +97,11 @@ fn install_panic_hook() {
 }
 
 /// Head-less engine check for CI (the GUI binary has no console to print to).
-fn selftest() -> i32 {
-    let state = engine::State::new();
+fn selftest(boot: std::time::Instant) -> i32 {
+    let detect_at = std::time::Instant::now();
     let machine = engine::Machine::detect();
+    let detect_ms = detect_at.elapsed().as_secs_f64() * 1000.0;
+    let state = engine::State::new();
     let stats = engine::sample();
     let emus = engine::emulators();
     let procs = engine::processes();
@@ -102,6 +118,8 @@ fn selftest() -> i32 {
         report.push_str(&format!("{}={}\n", k, v));
     };
     line("version", engine::VERSION.to_string());
+    line("boot_ms", format!("{:.1}", boot.elapsed().as_secs_f64() * 1000.0));
+    line("detect_ms", format!("{:.1}", detect_ms));
     line("os", machine.os.clone());
     line("host", machine.host.clone());
     line("cpu", machine.cpu.clone());

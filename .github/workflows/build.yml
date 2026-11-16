@@ -119,6 +119,42 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "VOID.exe --selftest failed with exit code $($p.ExitCode)" }
           if (-not (Select-String -Path void-selftest.txt -Pattern '^ok=true' -Quiet)) { throw "selftest did not report ok=true" }
 
+      # Telemetry channel: the raw step log lives on a CDN some networks block,
+      # so the numbers that matter (boot time, selftest, compiler tail) are
+      # committed to the disposable `void-ci` branch instead.
+      - name: Telemetry
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "void-ci"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $report = "no selftest report"
+          if (Test-Path void-selftest.txt) { $report = Get-Content void-selftest.txt -Raw }
+          $tail = "no check log"
+          if (Test-Path check.log) { $tail = ((Get-Content check.log -Tail 60) -join "`n") }
+          $body = @"
+          sha: $env:GITHUB_SHA
+          run: $env:GITHUB_RUN_ID
+          ref: $env:GITHUB_REF
+
+          ## selftest
+          $report
+
+          ## compiler tail
+          $tail
+          "@
+          Set-Content -Path (Join-Path $dir "last-run.md") -Value $body -Encoding utf8
+          Push-Location $dir
+          git init -q
+          git checkout -q -B void-ci
+          git config user.name "void-ci"
+          git config user.email "ci@void.invalid"
+          git add last-run.md
+          git commit -q -m "ci telemetry [skip ci]"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" void-ci
+          Pop-Location
+
       - name: Package
         shell: pwsh
         run: |
