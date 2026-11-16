@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.4.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
+`v0.5.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -77,6 +77,30 @@ documented way back.
 | **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
+
+### What's new in 0.5.0
+
+* **Two themes, one ramp.** **Obsidian** (near-black) and **Porcelain** (light) are the same
+  drawing inverted — same alphas, same hairlines, same type. Flip it from the top bar, the
+  settings card or the palette; the choice persists.
+* **Discord rich presence, native.** VOID talks to the Discord client directly over
+  `\\.\pipe\discord-ipc-N` — a hand-rolled framed-JSON client on a background thread, in
+  about a hundred lines with no SDK and no dependency. It shows your tuned count, verified
+  count, VOID score, the view you are on and the session clock, plus a link back to this
+  repo. App id `1571961942044713070`.
+* **Pre-flight.** Seven checks — elevation, power plan, kernel timer, catalog coverage,
+  sleep jitter, handshake RTT, emulator presence — each derived from a measurement, with a
+  **fix the gaps** button that applies the profile which closes whatever is open.
+* **Void Guard.** Every twenty seconds VOID reads its applied changes back out of Windows.
+  Anything that drifted is re-asserted without asking. A game overlay, a driver updater or
+  a Windows refresh can silently undo a tweak; the guard puts it back.
+* **Command palette.** `Ctrl/⌘+K` reaches every view, every action and every tweak in one
+  box. `Ctrl/⌘+1…9` jumps between views. `Esc` closes everything.
+* **Diagnostics export.** One markdown file with the machine, the score, the checklist, the
+  applied catalog with the reason for each entry, and the tail of the journal — written to
+  the data directory from the settings card or the palette.
+* **Still monochrome, still native, still 4.5 MB.** No new dependencies; the presence client
+  and the pipe protocol are in-tree.
 
 ### What's new in 0.4.0
 
