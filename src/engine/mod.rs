@@ -212,7 +212,7 @@ fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().chars().take(200).collect()
 }
 
-fn do_cmd(state: &State, program: &str, args: &[&str]) -> (bool, String) {
+fn do_cmd(_state: &State, program: &str, args: &[&str]) -> (bool, String) {
     let shown = format!("{} {}", program, args.join(" "));
     if simulated() {
         thread::sleep(Duration::from_millis(2));
@@ -236,7 +236,7 @@ fn do_cmd(state: &State, program: &str, args: &[&str]) -> (bool, String) {
 }
 
 /// Like `do_cmd`, but a non-zero exit is not fatal (missing service / value).
-fn do_cmd_lenient(state: &State, program: &str, args: &[&str]) -> (bool, String) {
+fn do_cmd_lenient(_state: &State, program: &str, args: &[&str]) -> (bool, String) {
     let shown = format!("{} {}", program, args.join(" "));
     if simulated() {
         thread::sleep(Duration::from_millis(2));
@@ -593,12 +593,12 @@ fn execute(state: &mut State, action: &Action, revert: bool) -> (bool, String) {
                 Ok(verified) => (
                     true,
                     if verified {
-                        format!("{}\{} = {}  ·  verified", k, v, d)
+                        format!("{}\\{} = {}  ·  verified", k, v, d)
                     } else {
-                        format!("{}\{} = {}  ·  written", k, v, d)
+                        format!("{}\\{} = {}  ·  written", k, v, d)
                     },
                 ),
-                Err(e) => (false, format!("{}\{}  ·  {}", k, v, e)),
+                Err(e) => (false, format!("{}\\{}  ·  {}", k, v, e)),
             }
         }
         Action::RegDel(k, v) => {
@@ -606,8 +606,8 @@ fn execute(state: &mut State, action: &Action, revert: bool) -> (bool, String) {
                 return (true, format!("simulated :: delete {}\\{}", k, v));
             }
             match platform::reg_delete(k, v) {
-                Ok(_) => (true, format!("{}\{} removed", k, v)),
-                Err(e) => (false, format!("{}\{}  ·  {}", k, v, e)),
+                Ok(_) => (true, format!("{}\\{} removed", k, v)),
+                Err(e) => (false, format!("{}\\{}  ·  {}", k, v, e)),
             }
         }
         Action::Cmd(p, args) => do_cmd(state, *p, *args),

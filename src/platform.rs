@@ -708,7 +708,7 @@ mod win {
         let ok = unsafe { SRSetRestorePointW(&info, &mut status) };
         if status.status != 0 {
             let hint = match status.status {
-                0x8007_0000u32 as i32 => "system protection is turned off for this drive",
+                0x8007_0000u32 => "system protection is turned off for this drive",
                 _ => "Windows refused to create the checkpoint",
             };
             return Err(format!("{} ({:#x})", hint, status.status as u32));
