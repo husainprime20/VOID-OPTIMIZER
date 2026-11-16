@@ -225,7 +225,13 @@ impl App {
         theme::install(&cc.egui_ctx);
         let state = State::new();
         let presence_on = state.presence;
-        theme::set_mode(if state.theme == 1 {
+        // CI can force a palette so both themes get rendered (see preview.yml)
+        let theme_idx = match std::env::var("VOID_THEME").unwrap_or_default().as_str() {
+            "light" => 1,
+            "dark" => 0,
+            _ => state.theme,
+        };
+        theme::set_mode(if theme_idx == 1 {
             theme::Mode::Light
         } else {
             theme::Mode::Dark
