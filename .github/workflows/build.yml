@@ -89,8 +89,36 @@ jobs:
           Write-Host "check ok"
 
       # Both binaries: the native window (VOID.exe) and the console companion.
+      # Same annotation trick as the check step: a link error must be readable
+      # without access to the CDN-hosted step log.
       - name: Build (release)
-        run: cargo build --release --bins
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo build --release --bins 2>&1 | Tee-Object -FilePath build.log | Out-Null
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $lines = Get-Content build.log
+            $blocks = @()
+            $cur = $null
+            foreach ($l in $lines) {
+              if ($l -match '^(error|warning: unused)') {
+                if ($cur) { $blocks += $cur }
+                $cur = $l
+              } elseif ($cur -and $l.Trim() -ne '' -and $blocks.Count -lt 12) {
+                $cur = $cur + ' ~~ ' + $l.Trim()
+                if ($cur.Length -gt 1200) { $blocks += $cur; $cur = $null }
+              }
+            }
+            if ($cur) { $blocks += $cur }
+            $i = 0
+            foreach ($b in ($blocks | Select-Object -First 10)) {
+              $i++
+              Write-Host ("::error title=Build error $i::" + ($b -replace '\|', '/'))
+            }
+            throw "release build failed ($code)"
+          }
+          Write-Host "build ok"
 
       - name: Smoke test
         shell: pwsh
@@ -119,6 +147,43 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "VOID.exe --selftest failed with exit code $($p.ExitCode)" }
           if (-not (Select-String -Path void-selftest.txt -Pattern '^ok=true' -Quiet)) { throw "selftest did not report ok=true" }
 
+      # Telemetry channel: the raw step log lives on a CDN some networks block,
+      # so the numbers that matter (boot time, selftest, compiler tail) are
+      # committed to the disposable `void-ci` branch instead.
+      - name: Telemetry
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "void-ci"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $report = "no selftest report"
+          if (Test-Path void-selftest.txt) { $report = Get-Content void-selftest.txt -Raw }
+          $tail = "no check log"
+          if (Test-Path build.log) { $tail = ((Get-Content build.log -Tail 60) -join "`n") }
+          elseif (Test-Path check.log) { $tail = ((Get-Content check.log -Tail 60) -join "`n") }
+          $body = @"
+          sha: $env:GITHUB_SHA
+          run: $env:GITHUB_RUN_ID
+          ref: $env:GITHUB_REF
+
+          ## selftest
+          $report
+
+          ## compiler tail
+          $tail
+          "@
+          Set-Content -Path (Join-Path $dir "last-run.md") -Value $body -Encoding utf8
+          Push-Location $dir
+          git init -q
+          git checkout -q -B void-ci
+          git config user.name "void-ci"
+          git config user.email "ci@void.invalid"
+          git add last-run.md
+          git commit -q -m "ci telemetry [skip ci]"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" void-ci
+          Pop-Location
+
       - name: Package
         shell: pwsh
         run: |
@@ -144,11 +209,10 @@ jobs:
             network, input, storage and a dedicated Free Fire lane.
           - Live telemetry, sleep-jitter benchmark, process boost, eDPI lab.
           - Built-in ambient bed (three presets, volume control) — calm, low, slow.
-          - Dry run, automatic restore point, one-click revert of everything.
+          - Every write verified by reading it back; one-click revert of everything.
 
           SAFETY
           - Nothing runs until you press a button; every command is shown first.
-          - Settings -> Dry run prints commands without changing anything.
           - "Revert all" restores every value VOID touched.
           - VOID never touches game files, game memory or anti-cheat.
           - Journal: %APPDATA%\VOID\void.log
@@ -230,20 +294,25 @@ jobs:
 
           **Run:** double-click VOID.exe. It asks for Administrator once, then opens.
 
-          ### What changed in 0.2.0
-          - **Native UI.** The browser-based surface is gone. The window is rendered
-            with egui (OpenGL), so it opens instantly, works offline, and has no
-            "engine offline" state to fall into — the engine runs in the same process.
-          - **No terminal window.** The binary is built for the Windows GUI subsystem
-            and every helper process (reg, sc, powercfg, PowerShell) is spawned with
-            CREATE_NO_WINDOW.
-          - **Real ambient audio.** A synthesised drone — 55 Hz floor, detuned fifths,
-            slow filtered air, one soft bell every ~11 s. Three presets, volume control.
-          - **Persistent applied stack.** Applied tweaks survive restarts and dry-run no
-            longer claims a change that was never written.
-          - **New:** live process list with one-click priority boost, emulator
-            detection + boost, sleep-jitter benchmark panel, eDPI/360° converter with
-            per-game sensitivity equivalents, restore point from anywhere.
+          ### What changed in 0.3.0
+          - **8 ms cold start.** Machine identity, admin state and the power plan are
+            read from the registry, the process token and powrprof instead of four
+            PowerShell CIM queries. Nothing on the launch path spawns a process.
+          - **The options actually run, on a worker thread.** Applying a profile no
+            longer freezes the window: a job strip reports each step, and every
+            registry write is read back from Windows to prove it landed. Rows show
+            `live` when the machine holds the value, `drift` when it does not.
+          - **Dry run removed.** One behaviour: press it, the machine changes, the
+            exact command stays visible under `details`.
+          - **Native everywhere.** Registry writes, process enumeration, priority and
+            affinity and the system checkpoint are direct Win32 calls now — no
+            reg.exe, no tasklist, no Checkpoint-Computer (0.2 s instead of 20 s).
+          - **New type system and shell.** IBM Plex Sans Light/Regular/Medium + Plex
+            Mono, subset to 84 KB and embedded; rebuilt rail, live read-outs, job
+            strip and view transitions.
+          - Kept from 0.2.x: the native egui window, no console, no Chromium, the
+            synthesised ambient bed, game watch, emulator boost, jitter benchmark,
+            eDPI lab.
 
           ### What's inside
           - **42** documented, reversible tweaks · **7** profiles

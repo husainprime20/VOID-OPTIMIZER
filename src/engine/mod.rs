@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.2.2";
+pub const VERSION: &str = "0.3.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -45,14 +45,15 @@ impl Machine {
 
 // ───────────────────────────── state ─────────────────────────────
 
+#[derive(Clone)]
 pub struct LogEntry {
     pub at: String,
     pub level: String,
     pub msg: String,
 }
 
+#[derive(Clone)]
 pub struct State {
-    pub dry_run: bool,
     pub applied: BTreeSet<String>,
     pub log: Vec<LogEntry>,
     pub volume: u8,
@@ -85,7 +86,6 @@ fn journal_path() -> std::path::PathBuf {
 impl State {
     pub fn new() -> State {
         let mut s = State {
-            dry_run: false,
             applied: BTreeSet::new(),
             log: Vec::new(),
             volume: 34,
@@ -110,11 +110,6 @@ impl State {
             ),
         );
         s
-    }
-
-    /// True when nothing may actually be changed on this machine.
-    pub fn sim(&self) -> bool {
-        self.dry_run || !platform::is_windows()
     }
 
     pub fn push(&mut self, level: &str, msg: &str) {
@@ -147,7 +142,6 @@ impl State {
                     "muted" => self.muted = truthy(v),
                     "motion" => self.motion = truthy(v),
                     "auto_backup" => self.auto_backup = truthy(v),
-                    "dry_run" => self.dry_run = truthy(v),
                     "last_profile" => self.last_profile = v.to_string(),
                     "applied" => {
                         self.applied = v
@@ -164,12 +158,11 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nmuted={}\nmotion={}\nauto_backup={}\ndry_run={}\nlast_profile={}\napplied={}\n",
+            "volume={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\napplied={}\n",
             self.volume,
             if self.muted { 1 } else { 0 },
             if self.motion { 1 } else { 0 },
             if self.auto_backup { 1 } else { 0 },
-            if self.dry_run { 1 } else { 0 },
             self.last_profile,
             self.applied.iter().cloned().collect::<Vec<String>>().join(",")
         );
@@ -186,11 +179,17 @@ impl State {
             "muted" => self.muted = truthy(value),
             "motion" => self.motion = truthy(value),
             "auto_backup" => self.auto_backup = truthy(value),
-            "dry_run" => self.dry_run = truthy(value),
             _ => {}
         }
         self.save();
     }
+}
+
+/// Nothing can be written when the engine is not on Windows (CI renders the
+/// UI on Linux). This is the *only* stand-in for a real write — the user-facing
+/// dry-run mode is gone, and on Windows every action touches the machine.
+pub fn simulated() -> bool {
+    !platform::is_windows()
 }
 
 // ───────────────────────────── lookup ─────────────────────────────
@@ -213,10 +212,10 @@ fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().chars().take(200).collect()
 }
 
-fn do_cmd(state: &State, program: &str, args: &[&str]) -> (bool, String) {
+fn do_cmd(_state: &State, program: &str, args: &[&str]) -> (bool, String) {
     let shown = format!("{} {}", program, args.join(" "));
-    if state.sim() {
-        thread::sleep(Duration::from_millis(26));
+    if simulated() {
+        thread::sleep(Duration::from_millis(2));
         return (true, format!("simulated :: {}", shown));
     }
     match platform::run(program, args) {
@@ -237,33 +236,15 @@ fn do_cmd(state: &State, program: &str, args: &[&str]) -> (bool, String) {
 }
 
 /// Like `do_cmd`, but a non-zero exit is not fatal (missing service / value).
-fn do_cmd_lenient(state: &State, program: &str, args: &[&str]) -> (bool, String) {
+fn do_cmd_lenient(_state: &State, program: &str, args: &[&str]) -> (bool, String) {
     let shown = format!("{} {}", program, args.join(" "));
-    if state.sim() {
-        thread::sleep(Duration::from_millis(18));
+    if simulated() {
+        thread::sleep(Duration::from_millis(2));
         return (true, format!("simulated :: {}", shown));
     }
     match platform::run(program, args) {
         Ok(_) => (true, shown),
         Err(e) => (true, format!("{} -> {}", shown, e)),
-    }
-}
-
-fn do_ps(state: &State, script: &str, label: &str) -> (bool, String) {
-    if state.sim() {
-        thread::sleep(Duration::from_millis(70));
-        return (true, format!("simulated :: {}", label));
-    }
-    match platform::powershell(script) {
-        Ok(o) => {
-            let out = first_line(&o.combined());
-            if o.ok {
-                (true, format!("{} :: {}", label, out))
-            } else {
-                (false, format!("{} -> {}", label, out))
-            }
-        }
-        Err(e) => (false, format!("{} -> {}", label, e)),
     }
 }
 
@@ -297,14 +278,82 @@ fn find_guid(text: &str) -> Option<String> {
     None
 }
 
-const FF_PROC: &str = "'HD-Player','Bluestacks','BlueStacksApp','LdVBoxHeadless','dnplayer','MEmu','MEmuHeadless','Nox','NoxVMHandle'";
+/// Android-emulator process names (without `.exe`) that host a Free Fire client.
+const FF_PROC: &[&str] = &[
+    "hd-player",
+    "bluestacks",
+    "bluestacksapp",
+    "ldvboxheadless",
+    "dnplayer",
+    "memu",
+    "memuheadless",
+    "nox",
+    "noxvmhandle",
+    "mumuplayer",
+    "gameloop",
+];
 
 // ───────────────────────────── specials ─────────────────────────────
+
+/// PIDs of every process whose image name matches an Android emulator.
+fn emulator_pids() -> Vec<u32> {
+    platform::processes()
+        .into_iter()
+        .filter(|(name, _, _)| {
+            let bare = name.to_ascii_lowercase();
+            let bare = bare.trim_end_matches(".exe").to_string();
+            FF_PROC.iter().any(|p| bare == *p || bare.starts_with(p))
+        })
+        .map(|(_, pid, _)| pid)
+        .collect()
+}
+
+/// Purge %TEMP% and %WINDIR%\Temp using std only — no PowerShell, no console.
+fn clean_temp() -> (bool, String) {
+    if simulated() {
+        return (true, "simulated :: temp purge".to_string());
+    }
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    for key in ["TEMP", "TMP"] {
+        if let Ok(v) = std::env::var(key) {
+            roots.push(std::path::PathBuf::from(v));
+        }
+    }
+    if let Ok(w) = std::env::var("WINDIR") {
+        roots.push(std::path::PathBuf::from(w).join("Temp"));
+    }
+    let mut freed: u64 = 0;
+    let mut removed: u32 = 0;
+    for root in roots.iter() {
+        let entries = match fs::read_dir(root) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let meta = entry.metadata();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let ok = if path.is_dir() {
+                fs::remove_dir_all(&path).is_ok()
+            } else {
+                fs::remove_file(&path).is_ok()
+            };
+            if ok {
+                freed = freed.saturating_add(size);
+                removed += 1;
+            }
+        }
+    }
+    (
+        true,
+        format!("{} item(s) cleared  ·  {:.0} MB", removed, freed as f64 / (1024.0 * 1024.0)),
+    )
+}
 
 fn run_special(state: &mut State, name: &str, revert: bool) -> (bool, String) {
     match name {
         "power_ultimate" => {
-            if state.sim() {
+            if simulated() {
                 thread::sleep(Duration::from_millis(55));
                 return (
                     true,
@@ -337,51 +386,77 @@ fn run_special(state: &mut State, name: &str, revert: bool) -> (bool, String) {
         "net_nagle_reset" => net_nagle(state, true),
         "net_congestion" => net_congestion(state, false),
         "net_congestion_default" => net_congestion(state, true),
-        "clean_temp" => do_ps(
-            state,
-            r#"$p=@($env:TEMP,"$env:WINDIR\Temp"); $sum=0; foreach($d in $p){ if(Test-Path $d){ try { $sum += (Get-ChildItem -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum } catch {}; Get-ChildItem -LiteralPath $d -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue } }; "{0:N0} MB purged" -f ($sum/1MB)"#,
-            "temp purge",
-        ),
-        "ff_priority" => do_ps(
-            state,
-            &format!(
-                r#"$c=0; Get-Process -Name {} -ErrorAction SilentlyContinue | ForEach-Object {{ try {{ $_.PriorityClass='High'; $c++ }} catch {{}} }}; "$c process(es) promoted to HIGH""#,
-                FF_PROC
-            ),
-            "emulator priority",
-        ),
-        "ff_affinity" => do_ps(
-            state,
-            &format!(
-                r#"$cores=(Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum; if(-not $cores -or $cores -lt 1){{$cores=4}}; if($cores -gt 16){{$cores=16}}; $mask=0; for($i=0;$i -lt $cores;$i++){{ $mask=$mask -bor ([int64]1 -shl (2*$i)) }}; $c=0; Get-Process -Name {} -ErrorAction SilentlyContinue | ForEach-Object {{ try {{ $_.ProcessorAffinity=[IntPtr]$mask; $c++ }} catch {{}} }}; "cores=$cores pinned=$c""#,
-                FF_PROC
-            ),
-            "emulator affinity",
-        ),
+        "clean_temp" => clean_temp(),
+        "ff_priority" => {
+            let pids = emulator_pids();
+            if pids.is_empty() {
+                (false, "no emulator is running".to_string())
+            } else {
+                let mut ok = 0;
+                let mut last = String::new();
+                for pid in pids.iter() {
+                    match platform::set_priority(*pid, "High") {
+                        Ok(m) => {
+                            ok += 1;
+                            last = m;
+                        }
+                        Err(e) => last = e,
+                    }
+                }
+                (
+                    ok > 0,
+                    format!("{} process(es) set to HIGH  ·  {}", ok, last),
+                )
+            }
+        }
+        "ff_affinity" => {
+            let pids = emulator_pids();
+            if pids.is_empty() {
+                return (false, "no emulator is running".to_string());
+            }
+            let cpus = platform::logical_cpus().min(32);
+            let mut mask: usize = 0;
+            let mut i = 0;
+            while i < cpus {
+                mask |= 1usize << i;
+                i += 2;
+            }
+            let mut ok = 0;
+            let mut last = String::new();
+            for pid in pids.iter() {
+                match platform::set_affinity(*pid, mask) {
+                    Ok(_) => {
+                        ok += 1;
+                        last = format!("mask {:#x}", mask);
+                    }
+                    Err(e) => last = e,
+                }
+            }
+            (
+                ok > 0,
+                format!("{} core(s) pinned  ·  {}  ·  {}", ok, last, if ok > 0 { "" } else { "failed" }),
+            )
+        }
         "ff_boost" => {
             let (a, ma) = run_special(state, "ff_priority", false);
             let (b, mb) = run_special(state, "ff_affinity", false);
-            let (c, mc) = do_ps(
-                state,
-                &format!(
-                    r#"$n=0; Get-Process -Name {} -ErrorAction SilentlyContinue | ForEach-Object {{ try {{ $_.MinWorkingSet=[IntPtr]0; $n++ }} catch {{}} }}; "working set unlocked on $n""#,
-                    FF_PROC
-                ),
-                "working set",
-            );
-            (a || b || c, format!("{} · {} · {}", ma, mb, mc))
+            (a || b, format!("{}  ·  {}", ma, mb))
         }
-        "restore_point" => do_ps(
-            state,
-            "Checkpoint-Computer -Description 'VOID restore point' -RestorePointType MODIFY_SETTINGS; 'restore point created'",
-            "system restore point",
-        ),
+        "restore_point" => {
+            if simulated() {
+                return (true, "simulated :: system checkpoint".to_string());
+            }
+            match platform::create_restore_point("VOID checkpoint") {
+                Ok(m) => (true, m),
+                Err(e) => (false, e),
+            }
+        }
         other => (false, format!("unknown special :: {}", other)),
     }
 }
 
 fn net_nagle(state: &mut State, revert: bool) -> (bool, String) {
-    if state.sim() {
+    if simulated() {
         thread::sleep(Duration::from_millis(45));
         return (
             true,
@@ -509,12 +584,32 @@ fn net_congestion(state: &mut State, revert: bool) -> (bool, String) {
 
 fn execute(state: &mut State, action: &Action, revert: bool) -> (bool, String) {
     match action {
-        Action::Reg(k, v, t, d) => do_cmd(
-            state,
-            "reg",
-            &["add", *k, "/v", *v, "/t", *t, "/d", *d, "/f"],
-        ),
-        Action::RegDel(k, v) => do_cmd_lenient(state, "reg", &["delete", *k, "/v", *v, "/f"]),
+        Action::Reg(k, v, t, d) => {
+            if simulated() {
+                return (true, format!("simulated :: {}\\{} = {}", k, v, d));
+            }
+            let kind = platform::RegKind::from_tag(t);
+            match platform::reg_write(k, v, kind, d) {
+                Ok(verified) => (
+                    true,
+                    if verified {
+                        format!("{}\\{} = {}  ·  verified", k, v, d)
+                    } else {
+                        format!("{}\\{} = {}  ·  written", k, v, d)
+                    },
+                ),
+                Err(e) => (false, format!("{}\\{}  ·  {}", k, v, e)),
+            }
+        }
+        Action::RegDel(k, v) => {
+            if simulated() {
+                return (true, format!("simulated :: delete {}\\{}", k, v));
+            }
+            match platform::reg_delete(k, v) {
+                Ok(_) => (true, format!("{}\\{} removed", k, v)),
+                Err(e) => (false, format!("{}\\{}  ·  {}", k, v, e)),
+            }
+        }
         Action::Cmd(p, args) => do_cmd(state, *p, *args),
         Action::Svc(name) => {
             if revert {
@@ -539,12 +634,10 @@ fn execute(state: &mut State, action: &Action, revert: bool) -> (bool, String) {
 // ───────────────────────────── apply / revert ─────────────────────────────
 
 fn apply_one(state: &mut State, t: &'static catalog::Tweak, revert: bool) -> Outcome {
-    if !revert && state.auto_backup && t.risk == 2 && platform::is_windows() && !state.dry_run {
-        let _ = do_ps(
-            state,
-            "Checkpoint-Computer -Description 'VOID auto' -RestorePointType MODIFY_SETTINGS",
-            "auto restore point",
-        );
+    if !revert && state.auto_backup && t.risk == 2 && platform::is_windows() {
+        if let Err(e) = platform::create_restore_point("VOID auto checkpoint") {
+            state.push("err", &format!("auto checkpoint :: {}", e));
+        }
     }
     let actions = if revert { t.revert } else { t.apply };
     let mut msgs: Vec<String> = Vec::new();
@@ -573,7 +666,7 @@ pub fn apply_ids(state: &mut State, ids: &[String]) -> Vec<Outcome> {
             Some(t) => {
                 let o = apply_one(state, t, false);
                 if o.ok {
-                    if state.sim() {
+                    if simulated() {
                         // nothing was written to the machine — do not pretend
                     } else if t.once {
                         state.applied.remove(t.id);
@@ -732,7 +825,7 @@ pub fn state_json(state: &State, machine: &Machine) -> String {
         json::ks("gpu", &machine.gpu),
         json::kb("admin", machine.admin),
         json::kb("simulated", machine.simulated),
-        json::kb("dry_run", state.dry_run),
+        json::kb("native_engine", !simulated()),
         json::kv("applied", json::arr(applied)),
         json::kv(
             "settings",
@@ -784,17 +877,16 @@ pub fn outcomes_json(outcomes: &[Outcome]) -> String {
 // ───────────────────────────── telemetry ─────────────────────────────
 
 pub fn stats_json() -> String {
-    let (cpu, total_gb, used_gb) = if platform::is_windows() {
-        stats_windows()
-    } else {
-        stats_unix()
-    };
+    // Two samples 120 ms apart so the CPU figure is a real delta, not a zero.
+    let _ = sample();
+    thread::sleep(Duration::from_millis(120));
+    let s = sample();
     json::obj(vec![
-        json::kf("cpu", cpu),
-        json::kf("ram", if total_gb > 0.0 { used_gb / total_gb * 100.0 } else { 0.0 }),
-        json::kf("ram_total", total_gb),
-        json::kf("ram_used", used_gb),
-        json::ki("uptime", platform::uptime_secs()),
+        json::kf("cpu", s.cpu),
+        json::kf("ram", s.ram),
+        json::kf("ram_total", s.total_gb),
+        json::kf("ram_used", s.used_gb),
+        json::ki("uptime", s.uptime),
         json::ki("ts", platform::epoch_secs()),
     ])
 }
@@ -858,22 +950,6 @@ fn mem_unix() -> (f64, f64) {
 fn kb_to_gb(raw: &str) -> f64 {
     let cleaned = raw.trim().trim_end_matches("kB").trim();
     cleaned.parse::<f64>().unwrap_or(0.0) / 1024.0 / 1024.0
-}
-
-fn stats_windows() -> (f64, f64, f64) {
-    let script = "$os=Get-CimInstance Win32_OperatingSystem; $cpu=(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; if(-not $cpu){$cpu=0}; \"$cpu|$($os.TotalVisibleMemorySize)|$($os.FreePhysicalMemory)\"";
-    if let Ok(o) = platform::powershell(script) {
-        let line = o.stdout.trim().to_string();
-        let parts: Vec<&str> = line.split('|').collect();
-        if parts.len() >= 3 {
-            let cpu = parts[0].trim().parse::<f64>().unwrap_or(0.0);
-            let total = parts[1].trim().parse::<f64>().unwrap_or(0.0) / 1024.0 / 1024.0;
-            let free = parts[2].trim().parse::<f64>().unwrap_or(0.0) / 1024.0 / 1024.0;
-            let used = if total > free { total - free } else { 0.0 };
-            return (cpu, total, used);
-        }
-    }
-    (0.0, 0.0, 0.0)
 }
 
 /// Measures real sleep-precision jitter — works on every platform.
@@ -1126,4 +1202,321 @@ pub fn readiness(state: &State, machine: &Machine) -> f64 {
     }
     let _ = weak_gpu;
     done as f64 / possible as f64 * 100.0
+}
+
+// ───────────────────────────── jobs ─────────────────────────────
+//
+// Every write happens on a worker thread. The window keeps painting at 60 fps
+// while a profile is being applied, and the UI shows exactly which step is
+// running — no frozen frame, no "not responding", no white rectangle.
+
+use std::sync::mpsc;
+use std::sync::Arc;
+
+pub enum Work {
+    Apply(Vec<String>),
+    Revert(Vec<String>),
+    Profile(&'static str),
+    RevertAll,
+    Restore,
+    Bench,
+}
+
+impl Work {
+    pub fn label(&self) -> String {
+        match self {
+            Work::Apply(ids) => format!("applying {}", ids.len()),
+            Work::Revert(ids) => format!("reverting {}", ids.len()),
+            Work::Profile(pid) => find_profile(pid)
+                .map(|p| p.name.to_string())
+                .unwrap_or_else(|| pid.to_string()),
+            Work::RevertAll => "reverting everything".to_string(),
+            Work::Restore => "system checkpoint".to_string(),
+            Work::Bench => "sleep-jitter benchmark".to_string(),
+        }
+    }
+}
+
+pub enum JobMsg {
+    Begin {
+        label: String,
+        total: usize,
+    },
+    Step {
+        index: usize,
+        total: usize,
+        name: String,
+        ok: bool,
+        note: String,
+    },
+    Bench(BenchResult),
+    Done {
+        label: String,
+        outcomes: Vec<Outcome>,
+        state: State,
+    },
+}
+
+pub struct Job {
+    pub label: String,
+    pub total: usize,
+    pub done: usize,
+    pub failed: usize,
+    pub current: String,
+    pub notes: Vec<(bool, String)>,
+    rx: mpsc::Receiver<JobMsg>,
+    finished: Option<(String, Vec<Outcome>, State)>,
+}
+
+impl Job {
+    pub fn start(state: State, work: Work, repaint: Arc<dyn Fn() + Send + Sync>) -> Job {
+        let (tx, rx) = mpsc::channel();
+        let label = work.label();
+        std::thread::spawn(move || {
+            let mut st = state;
+            let paint = {
+                let r = repaint.clone();
+                move || r()
+            };
+            match work {
+                Work::Bench => {
+                    let _ = tx.send(JobMsg::Begin {
+                        label: "sleep-jitter benchmark".to_string(),
+                        total: 1,
+                    });
+                    paint();
+                    let result = bench();
+                    let _ = tx.send(JobMsg::Bench(result));
+                    let _ = tx.send(JobMsg::Begin {
+                        label: "sleep-jitter benchmark".to_string(),
+                        total: 1,
+                    });
+                    let _ = tx.send(JobMsg::Step {
+                        index: 0,
+                        total: 1,
+                        name: "120 wake-ups sampled".to_string(),
+                        ok: true,
+                        note: "done".to_string(),
+                    });
+                    st.save();
+                    let _ = tx.send(JobMsg::Done {
+                        label: "sleep-jitter benchmark".to_string(),
+                        outcomes: Vec::new(),
+                        state: st.clone(),
+                    });
+                    paint();
+                }
+                Work::Restore => {
+                    let _ = tx.send(JobMsg::Begin {
+                        label: "system checkpoint".to_string(),
+                        total: 1,
+                    });
+                    paint();
+                    let o = restore_point(&mut st);
+                    let _ = tx.send(JobMsg::Step {
+                        index: 0,
+                        total: 1,
+                        name: "system checkpoint".to_string(),
+                        ok: o.ok,
+                        note: o.msg.clone(),
+                    });
+                    st.save();
+                    let _ = tx.send(JobMsg::Done {
+                        label: "system checkpoint".to_string(),
+                        outcomes: vec![o],
+                        state: st.clone(),
+                    });
+                    paint();
+                }
+                Work::Apply(ids) => {
+                    run_list(&tx, &mut st, ids, false, "apply".to_string(), &paint);
+                    st.save();
+                    paint();
+                }
+                Work::Revert(ids) => {
+                    run_list(&tx, &mut st, ids, true, "revert".to_string(), &paint);
+                    st.save();
+                    paint();
+                }
+                Work::Profile(pid) => {
+                    let name = find_profile(pid)
+                        .map(|p| p.name.to_string())
+                        .unwrap_or_else(|| pid.to_string());
+                    let ids: Vec<String> = find_profile(pid)
+                        .map(|p| p.tweaks.iter().map(|s| s.to_string()).collect())
+                        .unwrap_or_default();
+                    st.last_profile = pid.to_string();
+                    st.push("sys", &format!("profile engaged :: {}", name));
+                    run_list(&tx, &mut st, ids, false, name, &paint);
+                    st.save();
+                    paint();
+                }
+                Work::RevertAll => {
+                    let ids: Vec<String> = st.applied.iter().cloned().collect();
+                    run_list(&tx, &mut st, ids, true, "revert all".to_string(), &paint);
+                    st.applied.clear();
+                    st.save();
+                    paint();
+                }
+            }
+        });
+        Job {
+            label,
+            total: 0,
+            done: 0,
+            failed: 0,
+            current: String::new(),
+            notes: Vec::new(),
+            rx,
+            finished: None,
+        }
+    }
+
+    pub fn progress(&self) -> f32 {
+        if self.total == 0 {
+            0.0
+        } else {
+            (self.done as f32 / self.total as f32).clamp(0.0, 1.0)
+        }
+    }
+
+    /// Drain everything the worker has said so far.
+    pub fn pump(&mut self) -> Option<BenchResult> {
+        let mut bench_result = None;
+        loop {
+            match self.rx.try_recv() {
+                Ok(JobMsg::Begin { label, total }) => {
+                    self.label = label;
+                    self.total = total;
+                }
+                Ok(JobMsg::Step {
+                    index,
+                    total,
+                    name,
+                    ok,
+                    note,
+                }) => {
+                    self.total = total;
+                    self.done = index + 1;
+                    self.current = name.clone();
+                    if !ok {
+                        self.failed += 1;
+                    }
+                    self.notes.push((ok, format!("{}  ·  {}", name, note)));
+                    if self.notes.len() > 80 {
+                        self.notes.remove(0);
+                    }
+                }
+                Ok(JobMsg::Bench(b)) => bench_result = Some(b),
+                Ok(JobMsg::Done {
+                    label,
+                    outcomes,
+                    state,
+                }) => {
+                    self.label = label.clone();
+                    self.done = self.total.max(self.done);
+                    self.finished = Some((label, outcomes, state));
+                }
+                Err(_) => break,
+            }
+        }
+        bench_result
+    }
+
+    pub fn take_finished(&mut self) -> Option<(String, Vec<Outcome>, State)> {
+        self.finished.take()
+    }
+}
+
+fn run_list(
+    tx: &mpsc::Sender<JobMsg>,
+    st: &mut State,
+    ids: Vec<String>,
+    revert: bool,
+    label: String,
+    paint: &dyn Fn(),
+) {
+    let total = ids.len();
+    let _ = tx.send(JobMsg::Begin {
+        label: label.clone(),
+        total,
+    });
+    paint();
+    let mut outcomes: Vec<Outcome> = Vec::new();
+    for (i, id) in ids.iter().enumerate() {
+        let t = find_tweak(id);
+        let name = t.map(|t| t.name.to_string()).unwrap_or_else(|| id.clone());
+        let o = match t {
+            Some(t) => apply_one(st, t, revert),
+            None => Outcome {
+                id: id.clone(),
+                ok: false,
+                msg: "unknown tweak".to_string(),
+            },
+        };
+        if revert {
+            st.applied.remove(id.as_str());
+        } else if o.ok {
+            match t {
+                Some(t) if t.once => {
+                    st.applied.remove(id.as_str());
+                }
+                _ => {
+                    st.applied.insert(id.clone());
+                }
+            }
+            st.ops = st.ops.wrapping_add(1);
+        }
+        let level = if o.ok { "ok" } else { "err" };
+        st.push(level, &format!("{} :: {}", name, o.msg));
+        let _ = tx.send(JobMsg::Step {
+            index: i,
+            total,
+            name,
+            ok: o.ok,
+            note: o.msg.clone(),
+        });
+        outcomes.push(o);
+        paint();
+    }
+    let _ = tx.send(JobMsg::Done {
+        label,
+        outcomes,
+        state: st.clone(),
+    });
+}
+
+/// Does the machine currently hold this tweak's value? `None` when the tweak is
+/// not a plain registry write (services, bcdedit, power plans…).
+pub fn live_status(id: &str) -> Option<bool> {
+    let t = find_tweak(id)?;
+    let mut seen = false;
+    for a in t.apply.iter() {
+        if let Action::Reg(k, v, ty, d) = a {
+            seen = true;
+            if !platform::reg_matches(k, v, platform::RegKind::from_tag(ty), d) {
+                return Some(false);
+            }
+        }
+    }
+    if seen {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+/// Current value of a tweak's first registry key, for the "current / target"
+/// read-out in the optimizer rows.
+pub fn current_value(id: &str) -> Option<String> {
+    let t = find_tweak(id)?;
+    for a in t.apply.iter() {
+        if let Action::Reg(k, v, ty, _) = a {
+            return match platform::RegKind::from_tag(ty) {
+                platform::RegKind::Dword => platform::reg_read_u32(k, v).map(|n| n.to_string()),
+                platform::RegKind::Str => platform::reg_read_string(k, v),
+            };
+        }
+    }
+    None
 }

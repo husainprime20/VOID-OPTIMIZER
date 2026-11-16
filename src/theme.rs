@@ -9,16 +9,29 @@ use eframe::egui::{
 };
 
 // ── palette ──────────────────────────────────────────────────────────────────
-pub const VOID: Color32 = Color32::from_rgb(5, 5, 6); // window
-pub const INK: Color32 = Color32::from_rgb(11, 11, 13); // card
-pub const INK2: Color32 = Color32::from_rgb(16, 16, 19); // raised
-pub const TXT: Color32 = Color32::from_rgb(244, 244, 246);
-pub const DIM: Color32 = Color32::from_rgb(152, 152, 159);
-pub const FAINT: Color32 = Color32::from_rgb(108, 108, 116);
-pub const GHOST: Color32 = Color32::from_rgb(74, 74, 82);
-pub const LINE: Color32 = Color32::from_rgb(28, 28, 32);
-pub const LINE2: Color32 = Color32::from_rgb(44, 44, 50);
+// A single monochrome ramp. Everything is neutral black / bone white; no hue
+// anywhere, so the only colour on screen is the game you are about to launch.
+pub const VOID: Color32 = Color32::from_rgb(4, 4, 5); // window
+pub const INK: Color32 = Color32::from_rgb(9, 9, 11); // card
+pub const INK2: Color32 = Color32::from_rgb(14, 14, 17); // raised
+pub const TXT: Color32 = Color32::from_rgb(246, 246, 247);
+pub const DIM: Color32 = Color32::from_rgb(158, 158, 165);
+pub const FAINT: Color32 = Color32::from_rgb(112, 112, 120);
+pub const GHOST: Color32 = Color32::from_rgb(78, 78, 86);
+pub const LINE: Color32 = Color32::from_rgb(26, 26, 30);
+pub const LINE2: Color32 = Color32::from_rgb(46, 46, 53);
 pub const WHITE: Color32 = Color32::from_rgb(255, 255, 255);
+
+/// The five faces VOID is set in: IBM Plex Sans Light / Regular / Medium and
+/// IBM Plex Mono Light / Regular. Subsets live in `assets/fonts`.
+pub const FACE_DISPLAY: &str = "plex.display";
+pub const FACE_TEXT: &str = "plex.text";
+pub const FACE_LABEL: &str = "plex.label";
+pub const FACE_MONO: &str = "plex.mono";
+
+fn face(name: &str) -> FontFamily {
+    FontFamily::Name(name.into())
+}
 
 pub fn a(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
@@ -38,20 +51,29 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 // ── type ─────────────────────────────────────────────────────────────────────
+/// Tracked micro-label (plex medium, uppercase, letterspaced by `tracked`).
 pub fn micro_font() -> FontId {
-    FontId::new(9.5, FontFamily::Proportional)
+    FontId::new(9.5, face(FACE_LABEL))
 }
+/// Interface text.
 pub fn label_font() -> FontId {
-    FontId::new(12.0, FontFamily::Proportional)
+    FontId::new(12.5, face(FACE_LABEL))
 }
+/// Reading text.
 pub fn body_font() -> FontId {
-    FontId::new(13.0, FontFamily::Proportional)
+    FontId::new(13.5, face(FACE_TEXT))
 }
+/// Big numbers — Plex Sans Light at display sizes.
 pub fn num_font(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Proportional)
+    FontId::new(size, face(FACE_DISPLAY))
 }
+/// Tabular data.
 pub fn mono_font(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Monospace)
+    FontId::new(size, face(FACE_MONO))
+}
+/// Wordmark / section titles.
+pub fn title_font(size: f32) -> FontId {
+    FontId::new(size, face(FACE_LABEL))
 }
 
 /// "SETTINGS" → "S E T T I N G S" — the tracking that gives the app its calm.
@@ -71,11 +93,57 @@ pub fn tracked(s: &str) -> String {
 }
 
 // ── style install ────────────────────────────────────────────────────────────
+fn register_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    let mut add = |name: &str, bytes: &'static [u8]| {
+        fonts
+            .font_data
+            .insert(name.to_owned(), egui::FontData::from_static(bytes).into());
+    };
+    add(FACE_DISPLAY, include_bytes!("../assets/fonts/plex-sans-light.ttf"));
+    add(FACE_TEXT, include_bytes!("../assets/fonts/plex-sans-regular.ttf"));
+    add(FACE_LABEL, include_bytes!("../assets/fonts/plex-sans-medium.ttf"));
+    add(FACE_MONO, include_bytes!("../assets/fonts/plex-mono-regular.ttf"));
+    add(
+        "plex.mono.light",
+        include_bytes!("../assets/fonts/plex-mono-light.ttf"),
+    );
+
+    let family = |list: Vec<&str>| -> Vec<String> { list.into_iter().map(|s| s.to_string()).collect() };
+    fonts.families.insert(
+        face(FACE_DISPLAY),
+        family(vec![FACE_DISPLAY, FACE_TEXT, "NotoEmoji-Regular"]),
+    );
+    fonts.families.insert(
+        face(FACE_TEXT),
+        family(vec![FACE_TEXT, FACE_DISPLAY, "NotoEmoji-Regular"]),
+    );
+    fonts.families.insert(
+        face(FACE_LABEL),
+        family(vec![FACE_LABEL, FACE_TEXT, "NotoEmoji-Regular"]),
+    );
+    fonts.families.insert(
+        face(FACE_MONO),
+        family(vec![FACE_MONO, "plex.mono.light", FACE_TEXT]),
+    );
+
+    // Default families point at Plex too, so any stray widget still matches.
+    if let Some(list) = fonts.families.get_mut(&FontFamily::Proportional) {
+        list.insert(0, FACE_TEXT.to_string());
+        list.insert(0, FACE_DISPLAY.to_string());
+    }
+    if let Some(list) = fonts.families.get_mut(&FontFamily::Monospace) {
+        list.insert(0, FACE_MONO.to_string());
+    }
+    ctx.set_fonts(fonts);
+}
+
 pub fn install(ctx: &egui::Context) {
+    register_fonts(ctx);
     let mut style = (*ctx.style()).clone();
 
     style.text_styles = [
-        (TextStyle::Heading, FontId::new(22.0, FontFamily::Proportional)),
+        (TextStyle::Heading, title_font(21.0)),
         (TextStyle::Body, body_font()),
         (TextStyle::Button, label_font()),
         (TextStyle::Small, micro_font()),
@@ -85,6 +153,7 @@ pub fn install(ctx: &egui::Context) {
 
     style.spacing.item_spacing = Vec2::new(8.0, 8.0);
     style.spacing.button_padding = Vec2::new(14.0, 8.0);
+    style.spacing.interact_size.y = 24.0;
     style.spacing.scroll.bar_width = 6.0;
     style.spacing.scroll.floating = true;
 
@@ -94,8 +163,8 @@ pub fn install(ctx: &egui::Context) {
     v.window_fill = VOID;
     v.extreme_bg_color = INK;
     v.faint_bg_color = INK2;
-    v.window_rounding = 16.0.into();
-    v.menu_rounding = 12.0.into();
+    v.window_rounding = 14.0.into();
+    v.menu_rounding = 14.0.into();
     v.selection.bg_fill = a(WHITE, 40);
     v.selection.stroke = Stroke::new(1.0_f32, TXT);
     v.widgets.noninteractive.bg_fill = INK;

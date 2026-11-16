@@ -76,7 +76,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if installed && theme::chip_button(ui, "launch", false).clicked() {
-                        app.run_action(Action::LaunchEmulator(path));
+                        app.run_action(ui.ctx(), Action::LaunchEmulator(path));
                     }
                 });
             });
@@ -247,7 +247,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
             theme::micro(ui, "sleep jitter benchmark");
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if theme::button(ui, "run", false).clicked() {
-                    app.run_action(Action::Bench);
+                    app.run_action(ui.ctx(), Action::Bench);
                 }
             });
         });
@@ -339,7 +339,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                 ));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if theme::chip_button(ui, "boost", false).clicked() {
-                        app.run_action(Action::BoostPid(pid));
+                        app.run_action(ui.ctx(), Action::BoostPid(pid));
                     }
                     ui.add_space(6.0);
                     ui.add(egui::Label::new(
