@@ -40,7 +40,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
 
         if rows.is_empty() {
             ui.add(egui::Label::new(
-                RichText::new("No emulator found on this machine.").font(body_font()).color(FAINT),
+                RichText::new("No emulator found on this machine.").font(body_font()).color(faint()),
             ));
         }
 
@@ -48,21 +48,21 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
                 let col = if running {
-                    WHITE
+                    white()
                 } else if installed {
-                    a(WHITE, 110)
+                    a(white(), 110)
                 } else {
-                    a(WHITE, 30)
+                    a(white(), 30)
                 };
                 ui.painter().circle_filled(dot.center(), 3.0, col);
                 ui.add(egui::Label::new(
-                    RichText::new(&name).font(label_font()).color(if installed { TXT } else { GHOST }),
+                    RichText::new(&name).font(label_font()).color(if installed { txt() } else { ghost() }),
                 ));
                 ui.add_space(8.0);
                 ui.add(egui::Label::new(
                     RichText::new(theme::clip(&path, 58))
                         .font(mono_font(9.5))
-                        .color(GHOST),
+                        .color(ghost()),
                 ));
                 ui.add_space(8.0);
                 theme::pill(
@@ -91,7 +91,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 "VOID tunes the host, never the game. Free Fire's anti-cheat only ever sees an emulator doing what it always does — just on a quieter machine.",
             )
             .font(micro_font())
-            .color(GHOST),
+            .color(ghost()),
         ));
     });
 
@@ -130,7 +130,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                         "The phone client was written for a 2 GHz mid-range SoC. On a desktop it is throttled by the emulator's scheduler, not by the CPU. Unparking cores, disabling HPET coalescing and pinning the emulator process removes the 5–15 ms frame spikes that feel like \"lag\" but are actually stalls.",
                     )
                     .font(body_font())
-                    .color(DIM),
+                    .color(dim()),
                 ));
                 ui.add_space(10.0);
                 ui.add(egui::Label::new(
@@ -138,7 +138,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                         "If the emulator still stutters, drop graphics to Smooth before adding more tweaks — the engine is already clean at that point.",
                     )
                     .font(micro_font())
-                    .color(FAINT),
+                    .color(faint()),
                 ));
             });
         });
@@ -185,10 +185,10 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
                             ui.add(egui::Label::new(
-                                RichText::new(value).font(num_font(34.0)).color(TXT),
+                                RichText::new(value).font(num_font(34.0)).color(txt()),
                             ));
                             ui.add(egui::Label::new(
-                                RichText::new(unit).font(label_font()).color(FAINT),
+                                RichText::new(unit).font(label_font()).color(faint()),
                             ));
                         });
                         ui.add_space(6.0);
@@ -211,12 +211,12 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                         ui.add(egui::Label::new(
                             RichText::new(format!("{:.1}", app.stats.used_gb))
                                 .font(num_font(34.0))
-                                .color(TXT),
+                                .color(txt()),
                         ));
                         ui.add(egui::Label::new(
                             RichText::new(format!("of {:.1} GB", app.stats.total_gb))
                                 .font(label_font())
-                                .color(FAINT),
+                                .color(faint()),
                         ));
                     });
                     ui.add_space(8.0);
@@ -275,10 +275,10 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                                 theme::micro(ui, k);
                                 ui.horizontal(|ui| {
                                     ui.add(egui::Label::new(
-                                        RichText::new(v).font(num_font(22.0)).color(TXT),
+                                        RichText::new(v).font(num_font(22.0)).color(txt()),
                                     ));
                                     ui.add(egui::Label::new(
-                                        RichText::new(unit).font(micro_font()).color(FAINT),
+                                        RichText::new(unit).font(micro_font()).color(faint()),
                                     ));
                                 });
                             },
@@ -319,7 +319,7 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                                     .fold(0.0f64, f64::max)
                             ))
                             .font(micro_font())
-                            .color(GHOST),
+                            .color(ghost()),
                         ));
                     });
                 }
@@ -328,9 +328,74 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                 ui.add(egui::Label::new(
                     RichText::new("No measurement yet. Run it with the process idle.")
                         .font(body_font())
-                        .color(FAINT),
+                        .color(faint()),
                 ));
             }
+        }
+    });
+
+    ui.add_space(14.0);
+
+    // ── cpu attribution ──
+    // Nothing else in this category names the process that stole the frame.
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "cpu attribution · last sample");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::chip_button(ui, "boost the top one", false).clicked() {
+                    if let Some((name, pid, _)) = app.thieves.first().cloned() {
+                        app.run_action(ui.ctx(), Action::BoostPid(pid));
+                        app.toast(1, format!("boosting {} · pid {}", theme::clip(&name, 24), pid));
+                    }
+                }
+            });
+        });
+        ui.add_space(4.0);
+        ui.add(egui::Label::new(
+            RichText::new(
+                "Kernel + user time per process, differenced between two samples. This is how VOID names what actually took the frame.",
+            )
+            .font(micro_font())
+            .color(ghost()),
+        ));
+        ui.add_space(10.0);
+
+        if app.thieves.is_empty() {
+            ui.add(egui::Label::new(
+                RichText::new("Sampling… this card fills in on the monitor view.")
+                    .font(body_font())
+                    .color(faint()),
+            ));
+        }
+        let top = app
+            .thieves
+            .iter()
+            .map(|(_, _, p)| *p)
+            .fold(0.0f32, f32::max)
+            .max(1.0);
+        for (name, _pid, pct) in app.thieves.iter().take(7) {
+            ui.horizontal(|ui| {
+                ui.add(egui::Label::new(
+                    RichText::new(theme::clip(name, 28))
+                        .font(mono_font(10.5))
+                        .color(if *pct > 8.0 { txt() } else { dim() }),
+                ));
+                ui.add_space(8.0);
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new((ui.available_width() - 74.0).max(60.0), 5.0), Sense::hover());
+                ui.painter().rect_filled(rect, 2.5, a(white(), 12));
+                let w = (pct / top).clamp(0.02, 1.0) * rect.width();
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(rect.min, Vec2::new(w, rect.height())),
+                    2.5,
+                    a(white(), if *pct > 8.0 { 225 } else { 150 }),
+                );
+                ui.add(egui::Label::new(
+                    RichText::new(format!("{:.1}%", pct)).font(mono_font(10.0)).color(faint()),
+                ));
+            });
+            ui.add_space(4.0);
         }
     });
 
@@ -357,13 +422,13 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                 "The process table is Windows-only. This build is running in simulation mode."
             };
             ui.add(egui::Label::new(
-                RichText::new(msg).font(body_font()).color(FAINT),
+                RichText::new(msg).font(body_font()).color(faint()),
             ));
         }
         for (name, pid, mem) in rows {
             ui.horizontal(|ui| {
                 ui.add(egui::Label::new(
-                    RichText::new(&name).font(mono_font(11.5)).color(DIM),
+                    RichText::new(&name).font(mono_font(11.5)).color(dim()),
                 ));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if theme::chip_button(ui, "boost", false).clicked() {
@@ -373,11 +438,11 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
                     ui.add(egui::Label::new(
                         RichText::new(format!("{:.0} mb", mem))
                             .font(mono_font(10.5))
-                            .color(FAINT),
+                            .color(faint()),
                     ));
                     ui.add_space(6.0);
                     ui.add(egui::Label::new(
-                        RichText::new(format!("{}", pid)).font(mono_font(10.5)).color(GHOST),
+                        RichText::new(format!("{}", pid)).font(mono_font(10.5)).color(ghost()),
                     ));
                 });
             });
@@ -410,17 +475,17 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(
-                        RichText::new(format!("{:.0}", edpi)).font(num_font(52.0)).color(TXT),
+                        RichText::new(format!("{:.0}", edpi)).font(num_font(52.0)).color(txt()),
                     ));
                     ui.add(egui::Label::new(
-                        RichText::new("eDPI").font(label_font()).color(FAINT),
+                        RichText::new("eDPI").font(label_font()).color(faint()),
                     ));
                 });
                 ui.add_space(2.0);
                 ui.add(egui::Label::new(
                     RichText::new(format!("{:.1} cm / 360°", cm360))
                         .font(body_font())
-                        .color(DIM),
+                        .color(dim()),
                 ));
                 ui.add_space(16.0);
 
@@ -470,7 +535,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
                         "Conversion is proportional to horizontal FOV. Set the target game's sensitivity so the 360° distance matches — that is what your hand learned.",
                     )
                     .font(micro_font())
-                    .color(GHOST),
+                    .color(ghost()),
                 ));
             });
         });
@@ -500,15 +565,15 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
                         ui.add(egui::Label::new(
                             RichText::new(format!("0{}", i + 1))
                                 .font(mono_font(11.0))
-                                .color(GHOST),
+                                .color(ghost()),
                         ));
                         ui.add_space(8.0);
                         ui.vertical(|ui| {
                             ui.add(egui::Label::new(
-                                RichText::new(*name).font(label_font()).color(TXT),
+                                RichText::new(*name).font(label_font()).color(txt()),
                             ));
                             ui.add(egui::Label::new(
-                                RichText::new(*detail).font(micro_font()).color(FAINT),
+                                RichText::new(*detail).font(micro_font()).color(faint()),
                             ));
                         });
                     });
@@ -528,7 +593,7 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
                         "Sensitivity is only half of it. Apply the input lane below and Windows stops resampling the mouse — the crosshair moves exactly where the sensor says.",
                     )
                     .font(body_font())
-                    .color(DIM),
+                    .color(dim()),
                 ));
             });
         });
@@ -554,7 +619,7 @@ fn stepper(ui: &mut Ui, label: &str, value: &mut f32, step: f32, min: f32, max: 
                 format!("{:.0}", *value)
             };
             ui.add(egui::Label::new(
-                RichText::new(shown).font(mono_font(13.0)).color(TXT),
+                RichText::new(shown).font(mono_font(13.0)).color(txt()),
             ));
             ui.add_space(4.0);
             if theme::chip_button(ui, "-", false).clicked() {

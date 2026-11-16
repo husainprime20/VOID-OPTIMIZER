@@ -54,8 +54,8 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
     let mut plan_toggle = false;
 
     let frame = egui::Frame::none()
-        .fill(if on { INK2 } else { INK })
-        .stroke(Stroke::new(1.0_f32, if on { a(WHITE, 55) } else { LINE }))
+        .fill(if on { ink2() } else { ink() })
+        .stroke(Stroke::new(1.0_f32, if on { a(white(), 55) } else { line() }))
         .rounding(14.0)
         .inner_margin(egui::Margin::symmetric(16.0, 13.0));
 
@@ -75,7 +75,7 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
                 ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
                     ui.horizontal(|ui| {
                         ui.add(egui::Label::new(
-                            RichText::new(t.name).font(label_font()).color(TXT),
+                            RichText::new(t.name).font(label_font()).color(txt()),
                         ));
                         ui.add_space(8.0);
                         risk_pill(ui, t.risk);
@@ -93,7 +93,7 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
                     });
                     ui.add_space(4.0);
                     ui.add(egui::Label::new(
-                        RichText::new(t.desc).font(body_font()).color(FAINT),
+                        RichText::new(t.desc).font(body_font()).color(faint()),
                     ));
                 });
             });
@@ -107,25 +107,25 @@ pub fn tweak_row(app: &mut App, ui: &mut Ui, t: &'static catalog::Tweak) {
                     Pos2::new(ui.min_rect().right(), ui.cursor().top() + 1.0),
                 ),
                 0.0,
-                LINE,
+                line(),
             );
             ui.add_space(10.0);
             ui.add(egui::Label::new(
-                RichText::new(t.why).font(body_font()).color(DIM),
+                RichText::new(t.why).font(body_font()).color(dim()),
             ));
             ui.add_space(8.0);
             for a in t.apply.iter() {
                 ui.add(egui::Label::new(
                     RichText::new(format!("-> {}", catalog::action_text(a)))
                         .font(mono_font(10.5))
-                        .color(FAINT),
+                        .color(faint()),
                 ));
             }
             for a in t.revert.iter() {
                 ui.add(egui::Label::new(
                     RichText::new(format!("<- {}", catalog::action_text(a)))
                         .font(mono_font(10.5))
-                        .color(GHOST),
+                        .color(ghost()),
                 ));
             }
             ui.add_space(10.0);
@@ -173,11 +173,11 @@ fn stat_card(ui: &mut Ui, label: &str, value: String, unit: &str, hist: &[f32], 
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.add(egui::Label::new(
-                RichText::new(value).font(num_font(28.0)).color(TXT),
+                RichText::new(value).font(num_font(28.0)).color(txt()),
             ));
             if !unit.is_empty() {
                 ui.add(egui::Label::new(
-                    RichText::new(unit).font(label_font()).color(FAINT),
+                    RichText::new(unit).font(label_font()).color(faint()),
                 ));
             }
         });
@@ -203,10 +203,10 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(
-                        RichText::new(format!("{:.0}", coverage)).font(num_font(64.0)).color(TXT),
+                        RichText::new(format!("{:.0}", coverage)).font(num_font(64.0)).color(txt()),
                     ));
                     ui.add(egui::Label::new(
-                        RichText::new("%").font(num_font(24.0)).color(FAINT),
+                        RichText::new("%").font(num_font(24.0)).color(faint()),
                     ));
                 });
                 ui.add_space(2.0);
@@ -218,7 +218,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         catalog::PROFILES.len()
                     ))
                     .font(body_font())
-                    .color(FAINT),
+                    .color(faint()),
                 ));
                 ui.add_space(16.0);
                 ui.horizontal(|ui| {
@@ -270,7 +270,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                             ui.add(egui::Label::new(
                                 RichText::new(theme::clip(&v, 34))
                                     .font(mono_font(10.5))
-                                    .color(DIM),
+                                    .color(dim()),
                             ));
                         });
                         ui.add_space(30.0);
@@ -336,10 +336,10 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                             None => ("—".to_string(), ""),
                         };
                         ui.add(egui::Label::new(
-                            RichText::new(v).font(num_font(28.0)).color(TXT),
+                            RichText::new(v).font(num_font(28.0)).color(txt()),
                         ));
                         ui.add(egui::Label::new(
-                            RichText::new(u).font(label_font()).color(FAINT),
+                            RichText::new(u).font(label_font()).color(faint()),
                         ));
                     });
                     ui.add_space(6.0);
@@ -363,7 +363,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                     ui.add(egui::Label::new(
                         RichText::new(format!("{:02}:{:02}", up / 60, up % 60))
                             .font(num_font(28.0))
-                            .color(TXT),
+                            .color(txt()),
                     ));
                     ui.add_space(6.0);
                     theme::micro(
@@ -404,15 +404,15 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                     "Quiet. VOID re-reads the process table every few seconds and offers the matching loadout the moment a game starts.",
                 )
                 .font(body_font())
-                .color(FAINT),
+                .color(faint()),
             ));
         } else {
             for (name, profile) in games {
                 ui.horizontal(|ui| {
                     let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), egui::Sense::hover());
-                    ui.painter().circle_filled(dot.center(), 3.0, WHITE);
+                    ui.painter().circle_filled(dot.center(), 3.0, white());
                     ui.add(egui::Label::new(
-                        RichText::new(name).font(label_font()).color(TXT),
+                        RichText::new(name).font(label_font()).color(txt()),
                     ));
                     ui.add_space(8.0);
                     theme::pill(ui, profile, false);
@@ -450,7 +450,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                     ui.add(egui::Label::new(
                         RichText::new("Nothing applied yet. Engines are on standby.")
                             .font(body_font())
-                            .color(FAINT),
+                            .color(faint()),
                     ));
                 } else {
                     let ids: Vec<String> = app.state.applied.iter().cloned().collect();
@@ -489,15 +489,89 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 for (at, msg) in lines.iter().rev() {
                     ui.horizontal(|ui| {
                         ui.add(egui::Label::new(
-                            RichText::new(at).font(mono_font(10.0)).color(GHOST),
+                            RichText::new(at).font(mono_font(10.0)).color(ghost()),
                         ));
                         ui.add(egui::Label::new(
-                            RichText::new(msg).font(mono_font(10.5)).color(DIM),
+                            RichText::new(msg).font(mono_font(10.5)).color(dim()),
                         ));
                     });
                 }
             });
         });
+    });
+
+    ui.add_space(14.0);
+
+    // ── pre-flight: the audit a coach would run by hand ──
+    let checks: Vec<(String, String, bool)> = app
+        .checks
+        .iter()
+        .map(|c| (c.label.to_string(), c.detail.clone(), c.ok))
+        .collect();
+    let failing = app.checks.iter().filter(|c| !c.ok).count();
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "pre-flight");
+            ui.add_space(10.0);
+            let badge = if failing == 0 {
+                "cleared".to_string()
+            } else {
+                format!("{} open", failing)
+            };
+            theme::pill(ui, &badge, failing == 0);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if failing > 0 && theme::button(ui, "fix the gaps", false).clicked() {
+                    app.run_action(ui.ctx(), Action::FixPreflight);
+                }
+                ui.add_space(8.0);
+                if theme::chip_button(ui, "net lab", false).clicked() {
+                    app.run_action(ui.ctx(), Action::Ping);
+                }
+            });
+        });
+        ui.add_space(8.0);
+        let per_row = 4;
+        for chunk in checks.chunks(per_row) {
+            ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+                let gap = 10.0;
+                let cw = (ui.available_width() - gap * (per_row as f32 - 1.0)) / per_row as f32;
+                ui.spacing_mut().item_spacing.x = gap;
+                for (label, detail, ok) in chunk {
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(cw, 0.0),
+                        Layout::top_down(Align::Min),
+                        |ui| {
+                            ui.set_width(cw);
+                            ui.horizontal(|ui| {
+                                let (dot, _) =
+                                    ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
+                                if *ok {
+                                    ui.painter().circle_filled(dot.center(), 3.0, white());
+                                } else {
+                                    ui.painter().circle_stroke(
+                                        dot.center(),
+                                        3.0,
+                                        Stroke::new(1.0_f32, faint()),
+                                    );
+                                }
+                                ui.add(egui::Label::new(
+                                    RichText::new(tracked(label))
+                                        .font(micro_font())
+                                        .color(if *ok { faint() } else { dim() }),
+                                ));
+                            });
+                            ui.add(egui::Label::new(
+                                RichText::new(theme::clip(detail, 28))
+                                    .font(mono_font(9.5))
+                                    .color(if *ok { ghost() } else { faint() }),
+                            ));
+                        },
+                    );
+                }
+            });
+            ui.add_space(8.0);
+        }
     });
 
     ui.add_space(14.0);
@@ -515,10 +589,10 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                     ui.add(egui::Label::new(
                         RichText::new(format!("{:03}", score))
                             .font(num_font(48.0))
-                            .color(TXT),
+                            .color(txt()),
                     ));
                     ui.add(egui::Label::new(
-                        RichText::new("/100").font(micro_font()).color(GHOST),
+                        RichText::new("/100").font(micro_font()).color(ghost()),
                     ));
                 });
                 ui.add(egui::Label::new(
@@ -529,7 +603,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         _ => "match ready",
                     })
                     .font(label_font())
-                    .color(FAINT),
+                    .color(faint()),
                 ));
             });
             ui.add_space(30.0);
@@ -540,21 +614,21 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         ui.add(egui::Label::new(
                             RichText::new(tracked(label))
                                 .font(micro_font())
-                                .color(FAINT),
+                                .color(faint()),
                         ));
                         ui.add_space(8.0);
                         let (rect, _) = ui.allocate_exact_size(
                             Vec2::new((ui.available_width() - 78.0).max(60.0), 6.0),
                             Sense::hover(),
                         );
-                        ui.painter().rect_filled(rect, 3.0, a(WHITE, 14));
+                        ui.painter().rect_filled(rect, 3.0, a(white(), 14));
                         let filled = egui::Rect::from_min_size(
                             rect.min,
                             Vec2::new(rect.width() * v.clamp(0.0, 1.0), rect.height()),
                         );
-                        ui.painter().rect_filled(filled, 3.0, a(WHITE, 225));
+                        ui.painter().rect_filled(filled, 3.0, a(white(), 225));
                         ui.add(egui::Label::new(
-                            RichText::new(detail).font(mono_font(10.0)).color(DIM),
+                            RichText::new(detail).font(mono_font(10.0)).color(dim()),
                         ));
                     });
                     ui.add_space(5.0);
@@ -564,7 +638,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         "Measured from your machine: applied share, kernel timer, sleep jitter, handshake RTT. Nothing is scored until it has been read back.",
                     )
                     .font(micro_font())
-                    .color(GHOST),
+                    .color(ghost()),
                 ));
             });
         });
@@ -658,7 +732,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(
-                        RichText::new("Ambient bed").font(label_font()).color(TXT),
+                        RichText::new("Ambient bed").font(label_font()).color(txt()),
                     ));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let mut on = app.audio.playing;
@@ -673,7 +747,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.add(egui::Label::new(
                     RichText::new(crate::audio::PRESETS[app.audio.preset].1)
                         .font(body_font())
-                        .color(FAINT),
+                        .color(faint()),
                 ));
                 ui.add_space(14.0);
 
@@ -684,7 +758,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                         ui.add(egui::Label::new(
                             RichText::new(format!("{}", (vol * 100.0).round() as i32))
                                 .font(mono_font(11.0))
-                                .color(DIM),
+                                .color(dim()),
                         ));
                     });
                 });
@@ -714,7 +788,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                         ui.add(egui::Label::new(
                             RichText::new(format!("{}", (inten * 100.0).round() as i32))
                                 .font(mono_font(11.0))
-                                .color(DIM),
+                                .color(dim()),
                         ));
                         ui.add_space(10.0);
                         let w = (ui.available_width() - 40.0).max(80.0);
@@ -731,7 +805,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                         "Intensity drives the pulse depth and the bell density. Trauma is the heaviest bed.",
                     )
                     .font(micro_font())
-                    .color(GHOST),
+                    .color(ghost()),
                 ));
 
                 if let Some(err) = &app.audio.error {
@@ -740,7 +814,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                     ui.add(egui::Label::new(
                         RichText::new(format!("audio: {}", short))
                             .font(mono_font(10.0))
-                            .color(GHOST),
+                            .color(ghost()),
                     ));
                 }
             });
@@ -751,9 +825,36 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.set_width(ui.available_width());
                 theme::micro(ui, "behaviour");
                 ui.add_space(10.0);
+                // theme
+                ui.horizontal(|ui| {
+                    theme::micro(ui, "theme");
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if theme::chip_button(ui, "porcelain", theme::light()).clicked() {
+                            app.run_action(ui.ctx(), Action::Theme(1));
+                        }
+                        if theme::chip_button(ui, "obsidian", !theme::light()).clicked() {
+                            app.run_action(ui.ctx(), Action::Theme(0));
+                        }
+                    });
+                });
+                ui.add_space(12.0);
                 let mut rows: Vec<(&str, bool, String)> = Vec::new();
                 rows.push(("Reduced motion", !app.state.motion, "stops dust, pulses and easing".into()));
                 rows.push(("Checkpoint before advanced", app.state.auto_backup, "srclient checkpoint, ~0.2 s".into()));
+                rows.push((
+                    "Discord presence",
+                    app.state.presence,
+                    if app.rpc.connected() {
+                        "connected · shows your score".into()
+                    } else {
+                        "waiting for the Discord client".to_string()
+                    },
+                ));
+                rows.push((
+                    "Void guard",
+                    app.state.guard,
+                    "re-asserts applied edits that drift".into(),
+                ));
                 for (label, on, hint) in rows {
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -761,6 +862,11 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                             if theme::toggle(ui, &mut v).changed() {
                                 match label {
                                     "Reduced motion" => app.state.motion = !app.state.motion,
+                                    "Discord presence" => {
+                                        app.state.presence = !app.state.presence;
+                                        app.rpc = crate::rpc::Rpc::start(app.state.presence);
+                                    }
+                                    "Void guard" => app.state.guard = !app.state.guard,
                                     _ => app.state.auto_backup = !app.state.auto_backup,
                                 }
                                 app.state.save();
@@ -768,10 +874,10 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                             }
                             ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
                                 ui.add(egui::Label::new(
-                                    RichText::new(label).font(label_font()).color(TXT),
+                                    RichText::new(label).font(label_font()).color(txt()),
                                 ));
                                 ui.add(egui::Label::new(
-                                    RichText::new(hint).font(micro_font()).color(FAINT),
+                                    RichText::new(hint).font(micro_font()).color(faint()),
                                 ));
                             });
                         });
@@ -824,6 +930,10 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.set_width(ui.available_width());
                 theme::micro(ui, "safety & maintenance");
                 ui.add_space(10.0);
+                if theme::chip_button(ui, "export report", false).clicked() {
+                    app.run_action(ui.ctx(), Action::ExportReport);
+                }
+                ui.add_space(8.0);
                 ui.horizontal_wrapped(|ui| {
                     if theme::chip_button(ui, "restore point", false).clicked() {
                         app.run_action(ui.ctx(), Action::RestorePoint);
@@ -845,7 +955,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                         "VOID only edits documented Windows configuration. No game files, no injection, no anti-cheat contact.",
                     )
                     .font(micro_font())
-                    .color(GHOST),
+                    .color(ghost()),
                 ));
             });
         });
@@ -859,7 +969,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 engine::VERSION
             ))
                 .font(body_font())
-                .color(FAINT),
+                .color(faint()),
         ));
         ui.add_space(6.0);
         ui.add(egui::Label::new(
@@ -873,7 +983,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 }
             ))
             .font(micro_font())
-            .color(GHOST),
+            .color(ghost()),
         ));
     });
 }

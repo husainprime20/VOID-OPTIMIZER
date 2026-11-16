@@ -17,6 +17,7 @@ mod audio;
 mod engine;
 mod json;
 mod platform;
+mod rpc;
 mod theme;
 mod views;
 

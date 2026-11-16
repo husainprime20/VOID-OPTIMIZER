@@ -13,8 +13,8 @@ pub fn optimize(app: &mut App, ui: &mut Ui) {
     ui.horizontal(|ui| {
         // search
         egui::Frame::none()
-            .fill(INK)
-            .stroke(egui::Stroke::new(1.0_f32, LINE))
+            .fill(ink())
+            .stroke(egui::Stroke::new(1.0_f32, line()))
             .rounding(9.0)
             .inner_margin(egui::Margin::symmetric(12.0, 7.0))
             .show(ui, |ui| {
@@ -88,7 +88,7 @@ pub fn optimize(app: &mut App, ui: &mut Ui) {
             ui.add(egui::Label::new(
                 RichText::new("No tweak matches that combination. Clear the search or pick another lane.")
                     .font(body_font())
-                    .color(FAINT),
+                    .color(faint()),
             ));
         });
         return;
@@ -178,8 +178,8 @@ pub fn profiles(app: &mut App, ui: &mut Ui) {
 fn profile_card(app: &mut App, ui: &mut Ui, p: &'static catalog::Profile) {
     let active = app.state.last_profile == p.id;
     let frame = egui::Frame::none()
-        .fill(INK)
-        .stroke(egui::Stroke::new(1.0_f32, if active { a(WHITE, 70) } else { LINE }))
+        .fill(ink())
+        .stroke(egui::Stroke::new(1.0_f32, if active { a(white(), 70) } else { line() }))
         .rounding(16.0)
         .inner_margin(egui::Margin::same(18.0));
     frame.show(ui, |ui| {
@@ -195,15 +195,15 @@ fn profile_card(app: &mut App, ui: &mut Ui, p: &'static catalog::Profile) {
         });
         ui.add_space(8.0);
         ui.add(egui::Label::new(
-            RichText::new(p.name).font(num_font(21.0)).color(TXT),
+            RichText::new(p.name).font(num_font(21.0)).color(txt()),
         ));
         ui.add_space(2.0);
         ui.add(egui::Label::new(
-            RichText::new(p.tagline).font(body_font()).color(DIM),
+            RichText::new(p.tagline).font(body_font()).color(dim()),
         ));
         ui.add_space(8.0);
         ui.add(egui::Label::new(
-            RichText::new(p.note).font(micro_font()).color(FAINT),
+            RichText::new(p.note).font(micro_font()).color(faint()),
         ));
         ui.add_space(14.0);
         ui.horizontal_wrapped(|ui| {
@@ -252,10 +252,10 @@ pub fn network(app: &mut App, ui: &mut Ui) {
                         .map(|b| format!("{:.2}", b.jitter))
                         .unwrap_or_else(|| "—".into());
                     ui.add(egui::Label::new(
-                        RichText::new(v).font(num_font(38.0)).color(TXT),
+                        RichText::new(v).font(num_font(38.0)).color(txt()),
                     ));
                     ui.add(egui::Label::new(
-                        RichText::new("ms").font(label_font()).color(FAINT),
+                        RichText::new("ms").font(label_font()).color(faint()),
                     ));
                 });
                 ui.add_space(2.0);
@@ -264,7 +264,7 @@ pub fn network(app: &mut App, ui: &mut Ui) {
                         "Timer resolution decides how fast the OS can wake a thread. Under 1 ms is competitive territory.",
                     )
                     .font(micro_font())
-                    .color(FAINT),
+                    .color(faint()),
                 ));
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
@@ -294,7 +294,7 @@ pub fn network(app: &mut App, ui: &mut Ui) {
                         egui::Pos2::new(x, rect.bottom() - h),
                         egui::Pos2::new(x + rect.width() / 28.0 - 2.0, rect.bottom()),
                     );
-                    ui.painter().rect_filled(bar, 1.5, a(WHITE, 60 + (i as u8 % 5) * 20));
+                    ui.painter().rect_filled(bar, 1.5, a(white(), 60 + (i as u8 % 5) * 20));
                 }
             }
         });
@@ -322,17 +322,17 @@ pub fn kernel(app: &mut App, ui: &mut Ui) {
                 };
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(
-                        RichText::new(v).font(num_font(34.0)).color(TXT),
+                        RichText::new(v).font(num_font(34.0)).color(txt()),
                     ));
                     ui.add(egui::Label::new(
-                        RichText::new("ms").font(label_font()).color(FAINT),
+                        RichText::new("ms").font(label_font()).color(faint()),
                     ));
                 });
                 ui.add_space(4.0);
                 ui.add(egui::Label::new(
                     RichText::new(format!("active power plan · {}", engine::power_plan()))
                         .font(micro_font())
-                        .color(FAINT),
+                        .color(faint()),
                 ));
             });
             if theme::chip_button(ui, "restore point", false).clicked() {
@@ -345,7 +345,7 @@ pub fn kernel(app: &mut App, ui: &mut Ui) {
                 "Kernel lane changes scheduler and timer policy. Every entry is reversible from the same switch that applies it; if Windows restarts a service afterwards, that is expected.",
             )
             .font(micro_font())
-            .color(GHOST),
+            .color(ghost()),
         ));
     });
 
@@ -389,7 +389,7 @@ pub fn net_lab(app: &mut App, ui: &mut Ui) {
         ui.add(egui::Label::new(
             RichText::new("Handshake RTT to the game endpoints, four samples each. Jitter is the mean deviation.")
                 .font(micro_font())
-                .color(GHOST),
+                .color(ghost()),
         ));
         ui.add_space(10.0);
 
@@ -397,7 +397,7 @@ pub fn net_lab(app: &mut App, ui: &mut Ui) {
             ui.add(egui::Label::new(
                 RichText::new("Not measured yet. The lab runs in the background and takes a few seconds.")
                     .font(body_font())
-                    .color(FAINT),
+                    .color(faint()),
             ));
             return;
         }
@@ -414,27 +414,27 @@ pub fn net_lab(app: &mut App, ui: &mut Ui) {
                 Align2::LEFT_CENTER,
                 row.label,
                 label_font(),
-                if row.ok { TXT } else { GHOST },
+                if row.ok { txt() } else { ghost() },
             );
             ui.painter().text(
                 Pos2::new(rect.left() + 190.0, y),
                 Align2::LEFT_CENTER,
                 theme::clip(row.host, 34),
                 mono_font(9.5),
-                GHOST,
+                ghost(),
             );
             // bar
             let bar = Rect::from_min_size(
                 Pos2::new(rect.left() + 400.0, y - 3.0),
                 Vec2::new(240.0, 6.0),
             );
-            ui.painter().rect_filled(bar, 3.0, a(WHITE, 12));
+            ui.painter().rect_filled(bar, 3.0, a(white(), 12));
             if row.ok {
                 let w = (row.avg as f32 / max_ms).clamp(0.02, 1.0) * bar.width();
                 ui.painter().rect_filled(
                     Rect::from_min_size(bar.min, Vec2::new(w, bar.height())),
                     3.0,
-                    if row.avg < 40.0 { a(WHITE, 235) } else { a(WHITE, 150) },
+                    if row.avg < 40.0 { a(white(), 235) } else { a(white(), 150) },
                 );
             }
             let value = if row.ok {
@@ -447,7 +447,7 @@ pub fn net_lab(app: &mut App, ui: &mut Ui) {
                 Align2::RIGHT_CENTER,
                 value,
                 mono_font(11.0),
-                if row.ok { TXT } else { FAINT },
+                if row.ok { txt() } else { faint() },
             );
             ui.painter().text(
                 Pos2::new(rect.right() - 84.0, y),
@@ -458,14 +458,14 @@ pub fn net_lab(app: &mut App, ui: &mut Ui) {
                     String::new()
                 },
                 mono_font(10.0),
-                FAINT,
+                faint(),
             );
             ui.painter().text(
                 Pos2::new(rect.right() - 132.0, y),
                 Align2::RIGHT_CENTER,
                 format!("{:.0}% loss", row.loss),
                 mono_font(10.0),
-                if row.loss > 0.0 { DIM } else { GHOST },
+                if row.loss > 0.0 { dim() } else { ghost() },
             );
         }
     });

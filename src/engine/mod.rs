@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.4.0";
+pub const VERSION: &str = "0.5.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -64,6 +64,12 @@ pub struct State {
     pub last_profile: String,
     pub started: i64,
     pub ops: u32,
+    /// 0 = Obsidian (dark), 1 = Porcelain (light).
+    pub theme: u8,
+    /// Discord rich presence.
+    pub presence: bool,
+    /// Self-healing: re-assert applied tweaks that drift.
+    pub guard: bool,
 }
 
 pub struct Outcome {
@@ -97,6 +103,9 @@ impl State {
             last_profile: String::new(),
             started: platform::epoch_secs(),
             ops: 0,
+            theme: 0,
+            presence: true,
+            guard: true,
         };
         s.load();
         s.push(
@@ -146,6 +155,9 @@ impl State {
                     "motion" => self.motion = truthy(v),
                     "auto_backup" => self.auto_backup = truthy(v),
                     "last_profile" => self.last_profile = v.to_string(),
+                    "theme" => self.theme = v.parse::<u8>().unwrap_or(0).min(1),
+                    "presence" => self.presence = truthy(v),
+                    "guard" => self.guard = truthy(v),
                     "applied" => {
                         self.applied = v
                             .split(',')
@@ -161,13 +173,16 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\napplied={}\n",
+            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\napplied={}\n",
             self.volume,
             self.intensity,
             if self.muted { 1 } else { 0 },
             if self.motion { 1 } else { 0 },
             if self.auto_backup { 1 } else { 0 },
             self.last_profile,
+            self.theme,
+            if self.presence { 1 } else { 0 },
+            if self.guard { 1 } else { 0 },
             self.applied.iter().cloned().collect::<Vec<String>>().join(",")
         );
         let _ = fs::write(settings_path(), body);
@@ -185,6 +200,13 @@ impl State {
                     self.intensity = v.min(100) as u8;
                 }
             }
+            "theme" => {
+                if let Ok(v) = value.parse::<u32>() {
+                    self.theme = v.min(1) as u8;
+                }
+            }
+            "presence" => self.presence = truthy(value),
+            "guard" => self.guard = truthy(value),
             "muted" => self.muted = truthy(value),
             "motion" => self.motion = truthy(value),
             "auto_backup" => self.auto_backup = truthy(value),
@@ -1395,6 +1417,10 @@ pub fn running_games() -> Vec<(&'static str, &'static str)> {
     out
 }
 
+pub fn cpu_times() -> Vec<(String, u32, u64)> {
+    platform::cpu_times()
+}
+
 pub fn processes() -> Vec<(String, u32, f64)> {
     platform::processes()
 }
@@ -1848,6 +1874,165 @@ fn run_list(
         outcomes,
         state: st.clone(),
     });
+}
+
+// ───────────────────────────── pre-flight ────────────────────────────────────
+
+/// One line of the pre-flight checklist. Every entry is derived from something
+/// that was actually measured on this machine — never from a static list.
+#[derive(Clone)]
+pub struct Check {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub detail: String,
+    pub ok: bool,
+    /// Which profile fixes it, when a fix is mechanical.
+    pub fix: Option<&'static str>,
+}
+
+/// The checklist states a machine must satisfy before a ranked session. It is
+/// the same audit a coach would run by hand, expressed as data.
+pub fn preflight(applied: usize, verified: usize, jitter: Option<f64>, ping: Option<f64>) -> Vec<Check> {
+    let mut out: Vec<Check> = Vec::new();
+
+    let admin = platform::is_admin();
+    out.push(Check {
+        id: "admin",
+        label: "elevated",
+        detail: if admin { "token is elevated".into() } else { "run as administrator".into() },
+        ok: admin,
+        fix: None,
+    });
+
+    let plan = power_plan();
+    let plan_ok = {
+        let p = plan.to_ascii_lowercase();
+        p.contains("high performance") || p.contains("ultimate") || p.contains("ryzen") || p.contains("bitsum")
+    };
+    out.push(Check {
+        id: "power",
+        label: "power plan",
+        detail: plan,
+        ok: plan_ok,
+        fix: Some("latency"),
+    });
+
+    let timer = timer_resolution_ms();
+    out.push(Check {
+        id: "timer",
+        label: "kernel timer",
+        detail: match timer {
+            Some(t) if t <= 0.5 => format!("{:.3} ms · locked", t),
+            Some(t) => format!("{:.3} ms", t),
+            None => "unavailable".into(),
+        },
+        ok: matches!(timer, Some(t) if t <= 1.0),
+        fix: Some("latency"),
+    });
+
+    let total = catalog::TWEAKS.len().max(1);
+    let pct = applied as f32 / total as f32 * 100.0;
+    out.push(Check {
+        id: "coverage",
+        label: "catalog",
+        detail: format!("{} applied · {} verified", applied, verified),
+        ok: pct >= 55.0,
+        fix: Some("esports"),
+    });
+
+    out.push(Check {
+        id: "jitter",
+        label: "sleep jitter",
+        detail: match jitter {
+            Some(j) => format!("{:.2} ms", j),
+            None => "not measured".into(),
+        },
+        ok: matches!(jitter, Some(j) if j <= 1.5),
+        fix: None,
+    });
+
+    out.push(Check {
+        id: "net",
+        label: "handshake rtt",
+        detail: match ping {
+            Some(p) => format!("{:.0} ms", p),
+            None => "net lab not run".into(),
+        },
+        ok: matches!(ping, Some(p) if p <= 70.0),
+        fix: None,
+    });
+
+    let emu = emulators().iter().any(|e| e.installed);
+    out.push(Check {
+        id: "emulator",
+        label: "emulator",
+        detail: if emu { "found".into() } else { "none installed".into() },
+        ok: emu,
+        fix: None,
+    });
+
+    out
+}
+
+// ─────────────────────────────── guard ───────────────────────────────────────
+
+/// The applied ids that no longer hold their value on the machine.
+pub fn drift(state: &State) -> Vec<String> {
+    if simulated() {
+        return Vec::new();
+    }
+    state
+        .applied
+        .iter()
+        .filter(|id| live_status(id) == Some(false))
+        .cloned()
+        .collect()
+}
+
+// ─────────────────────────── diagnostics report ──────────────────────────────
+
+/// Write a self-contained markdown report next to the settings: what the
+/// machine is, what VOID measured, what it changed and why. Returns the path.
+pub fn export_report(state: &State, score: u32, checks: &[Check], jitter: Option<f64>, ping: Option<f64>) -> Result<std::path::PathBuf, String> {
+    let m = Machine::detect();
+    let mut body = String::new();
+    body.push_str(&format!("# VOID {} — diagnostics\n\n", VERSION));
+    body.push_str(&format!("generated {}\n\n", platform::now_stamp()));
+    body.push_str(&format!("## machine\n\n- os: {}\n- host: {}\n- cpu: {}\n- gpu: {}\n- admin: {}\n", m.os, m.host, m.cpu, m.gpu, m.admin));
+    body.push_str(&format!(
+        "\n## score\n\n- void score: {}/100\n- timer: {:?} ms\n- sleep jitter: {:?}\n- handshake rtt: {:?}\n",
+        score,
+        timer_resolution_ms(),
+        jitter,
+        ping
+    ));
+    body.push_str("\n## pre-flight\n\n");
+    for c in checks {
+        body.push_str(&format!("- [{}] {} — {}\n", if c.ok { "x" } else { " " }, c.label, c.detail));
+    }
+    body.push_str(&format!(
+        "\n## applied ({}/{})\n\n",
+        state.applied.len(),
+        catalog::TWEAKS.len()
+    ));
+    for id in state.applied.iter() {
+        match find_tweak(id) {
+            Some(t) => body.push_str(&format!("- `{}` {} — {}\n", t.id, t.name, t.why)),
+            None => body.push_str(&format!("- `{}` (not in catalog)\n", id)),
+        }
+    }
+    body.push_str("\n## journal (last 60)\n\n```\n");
+    let skip = state.log.len().saturating_sub(60);
+    for e in state.log.iter().skip(skip) {
+        body.push_str(&format!("{} [{}] {}\n", e.at, e.level, e.msg));
+    }
+    body.push_str("```\n");
+
+    let dir = platform::data_dir();
+    let name = format!("void-report-{}.md", platform::epoch_secs());
+    let path = dir.join(name);
+    fs::write(&path, body).map_err(|e| format!("write {}: {}", path.display(), e))?;
+    Ok(path)
 }
 
 /// Does the machine currently hold this tweak's value? `None` when the tweak is

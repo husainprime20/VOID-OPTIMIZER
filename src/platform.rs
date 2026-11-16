@@ -816,6 +816,50 @@ mod win {
         out
     }
 
+    pub fn cpu_times() -> Vec<(String, u32, u64)> {
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        let mut out: Vec<(String, u32, u64)> = Vec::new();
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snap == 0 || snap == INVALID_HANDLE {
+                return out;
+            }
+            let mut entry: ProcessEntry32W = std::mem::zeroed();
+            entry.size = std::mem::size_of::<ProcessEntry32W>() as u32;
+            let mut more = Process32FirstW(snap, &mut entry) != 0;
+            while more {
+                let len = entry.exe.iter().position(|c| *c == 0).unwrap_or(MAX_PATH);
+                let name = String::from_utf16_lossy(&entry.exe[..len]);
+                if !name.is_empty() && entry.pid > 0 {
+                    let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.pid);
+                    if handle != 0 && handle != INVALID_HANDLE {
+                        let mut created = super::FileTime::default();
+                        let mut exited = super::FileTime::default();
+                        let mut kernel = super::FileTime::default();
+                        let mut user = super::FileTime::default();
+                        if super::kern::GetProcessTimes(
+                            handle as *mut std::ffi::c_void,
+                            &mut created,
+                            &mut exited,
+                            &mut kernel,
+                            &mut user,
+                        ) != 0
+                        {
+                            let ticks = |t: super::FileTime| {
+                                ((t.high as u64) << 32) | t.low as u64
+                            };
+                            out.push((name, entry.pid, ticks(kernel) + ticks(user)));
+                        }
+                        CloseHandle(handle);
+                    }
+                }
+                more = Process32NextW(snap, &mut entry) != 0;
+            }
+            CloseHandle(snap);
+        }
+        out
+    }
+
     pub fn set_affinity(pid: u32, mask: usize) -> Result<(), String> {
         unsafe {
             let handle = OpenProcess(
@@ -1078,6 +1122,20 @@ pub fn processes() -> Vec<(String, u32, f64)> {
     }
 }
 
+/// CPU time consumed by every process, in 100 ns ticks (kernel + user). The
+/// difference between two samples is exactly what each process ate in between —
+/// which is how VOID can name the thing that stole your frame.
+pub fn cpu_times() -> Vec<(String, u32, u64)> {
+    #[cfg(windows)]
+    {
+        win::cpu_times()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
 pub fn is_process_running(exe: &str) -> bool {
     let want = exe.trim_end_matches(".exe").to_ascii_lowercase();
     processes()
@@ -1190,6 +1248,13 @@ mod kern {
             user: *mut super::FileTime,
         ) -> i32;
         pub fn GlobalMemoryStatusEx(mem: *mut super::MemStatusEx) -> i32;
+        pub fn GetProcessTimes(
+            handle: *mut std::ffi::c_void,
+            creation: *mut super::FileTime,
+            exit: *mut super::FileTime,
+            kernel: *mut super::FileTime,
+            user: *mut super::FileTime,
+        ) -> i32;
     }
 }
 

@@ -3,24 +3,92 @@
 // One palette, one type scale, one set of primitives. Every pixel in the app
 // comes from here so the whole surface stays monochrome and consistent.
 
+use std::sync::atomic::{AtomicU8, Ordering};
+
 use eframe::egui::{
     self, Align2, Color32, FontFamily, FontId, Pos2, Rect, Response, RichText, Sense, Stroke,
     TextStyle, Ui, Vec2,
 };
 
 // ── palette ──────────────────────────────────────────────────────────────────
-// A single monochrome ramp. Everything is neutral black / bone white; no hue
-// anywhere, so the only colour on screen is the game you are about to launch.
-pub const VOID: Color32 = Color32::from_rgb(4, 4, 5); // window
-pub const INK: Color32 = Color32::from_rgb(9, 9, 11); // card
-pub const INK2: Color32 = Color32::from_rgb(14, 14, 17); // raised
-pub const TXT: Color32 = Color32::from_rgb(246, 246, 247);
-pub const DIM: Color32 = Color32::from_rgb(158, 158, 165);
-pub const FAINT: Color32 = Color32::from_rgb(112, 112, 120);
-pub const GHOST: Color32 = Color32::from_rgb(78, 78, 86);
-pub const LINE: Color32 = Color32::from_rgb(26, 26, 30);
-pub const LINE2: Color32 = Color32::from_rgb(46, 46, 53);
-pub const WHITE: Color32 = Color32::from_rgb(255, 255, 255);
+// Two themes, one ramp. Obsidian is near-black ink on near-black paper;
+// Porcelain is the same drawing inverted — same alphas, same hairlines, so every
+// primitive in this file works in both without knowing which is on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mode {
+    Dark,
+    Light,
+}
+
+static MODE: AtomicU8 = AtomicU8::new(0);
+
+pub fn mode() -> Mode {
+    if MODE.load(Ordering::Relaxed) == 1 {
+        Mode::Light
+    } else {
+        Mode::Dark
+    }
+}
+
+pub fn set_mode(m: Mode) {
+    MODE.store(if m == Mode::Light { 1 } else { 0 }, Ordering::Relaxed);
+}
+
+pub fn light() -> bool {
+    MODE.load(Ordering::Relaxed) == 1
+}
+
+fn pick(dark: (u8, u8, u8), pale: (u8, u8, u8)) -> Color32 {
+    let (r, g, b) = if light() { pale } else { dark };
+    Color32::from_rgb(r, g, b)
+}
+
+/// Window.
+pub fn bg() -> Color32 {
+    pick((4, 4, 5), (245, 245, 243))
+}
+/// Card.
+pub fn ink() -> Color32 {
+    pick((9, 9, 11), (255, 255, 255))
+}
+/// Raised surface.
+pub fn ink2() -> Color32 {
+    pick((14, 14, 17), (238, 238, 235))
+}
+/// Primary text.
+pub fn txt() -> Color32 {
+    pick((246, 246, 247), (17, 17, 20))
+}
+/// Secondary text.
+pub fn dim() -> Color32 {
+    pick((158, 158, 165), (86, 86, 94))
+}
+/// Tertiary text.
+pub fn faint() -> Color32 {
+    pick((112, 112, 120), (122, 122, 130))
+}
+/// Quaternary text.
+pub fn ghost() -> Color32 {
+    pick((78, 78, 86), (158, 158, 164))
+}
+/// Rail surface — a touch darker than the window in Obsidian, a touch warmer in
+/// Porcelain, so the navigation reads as a separate plane in both.
+pub fn rail_bg() -> Color32 {
+    pick((6, 6, 8), (238, 238, 234))
+}
+/// Hairline.
+pub fn line() -> Color32 {
+    pick((26, 26, 30), (226, 226, 222))
+}
+/// Stronger divider.
+pub fn line2() -> Color32 {
+    pick((46, 46, 53), (204, 204, 200))
+}
+/// The accent: pure white in Obsidian, near-black ink in Porcelain. Every fill
+/// and dot in the app is built from this with an alpha, so it inverts cleanly.
+pub fn white() -> Color32 {
+    pick((255, 255, 255), (14, 14, 16))
+}
 
 /// The five faces VOID is set in: IBM Plex Sans Light / Regular / Medium and
 /// IBM Plex Mono Light / Regular. Subsets live in `assets/fonts`.
@@ -140,6 +208,12 @@ fn register_fonts(ctx: &egui::Context) {
 
 pub fn install(ctx: &egui::Context) {
     register_fonts(ctx);
+    restyle(ctx);
+}
+
+/// Re-derive the widget style from the active palette. Cheap; used when the
+/// theme flips so native widgets (scrollbars, text edits) invert with the rest.
+pub fn restyle(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
 
     style.text_styles = [
@@ -158,30 +232,30 @@ pub fn install(ctx: &egui::Context) {
     style.spacing.scroll.floating = true;
 
     let mut v = egui::Visuals::dark();
-    v.override_text_color = Some(DIM);
-    v.panel_fill = VOID;
-    v.window_fill = VOID;
-    v.extreme_bg_color = INK;
-    v.faint_bg_color = INK2;
+    v.override_text_color = Some(dim());
+    v.panel_fill = bg();
+    v.window_fill = bg();
+    v.extreme_bg_color = ink();
+    v.faint_bg_color = ink2();
     v.window_rounding = 14.0.into();
     v.menu_rounding = 14.0.into();
-    v.selection.bg_fill = a(WHITE, 40);
-    v.selection.stroke = Stroke::new(1.0_f32, TXT);
-    v.widgets.noninteractive.bg_fill = INK;
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, LINE);
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, DIM);
-    v.widgets.inactive.bg_fill = INK2;
-    v.widgets.inactive.weak_bg_fill = INK2;
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, LINE2);
-    v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TXT);
-    v.widgets.hovered.bg_fill = INK2;
-    v.widgets.hovered.weak_bg_fill = INK2;
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, a(WHITE, 90));
-    v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, WHITE);
-    v.widgets.active.bg_fill = INK2;
-    v.widgets.active.weak_bg_fill = INK2;
-    v.widgets.active.bg_stroke = Stroke::new(1.0_f32, WHITE);
-    v.widgets.active.fg_stroke = Stroke::new(1.0_f32, WHITE);
+    v.selection.bg_fill = a(white(), 40);
+    v.selection.stroke = Stroke::new(1.0_f32, txt());
+    v.widgets.noninteractive.bg_fill = ink();
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, line());
+    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, dim());
+    v.widgets.inactive.bg_fill = ink2();
+    v.widgets.inactive.weak_bg_fill = ink2();
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, line2());
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, txt());
+    v.widgets.hovered.bg_fill = ink2();
+    v.widgets.hovered.weak_bg_fill = ink2();
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, a(white(), 90));
+    v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, white());
+    v.widgets.active.bg_fill = ink2();
+    v.widgets.active.weak_bg_fill = ink2();
+    v.widgets.active.bg_stroke = Stroke::new(1.0_f32, white());
+    v.widgets.active.fg_stroke = Stroke::new(1.0_f32, white());
     style.visuals = v;
 
     ctx.set_style(style);
@@ -190,14 +264,14 @@ pub fn install(ctx: &egui::Context) {
 // ── primitives ───────────────────────────────────────────────────────────────
 pub fn micro(ui: &mut Ui, text: &str) {
     ui.add(egui::Label::new(
-        RichText::new(tracked(text)).font(micro_font()).color(FAINT),
+        RichText::new(tracked(text)).font(micro_font()).color(faint()),
     ));
 }
 
 pub fn hairline(ui: &mut Ui) {
     let w = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 1.0), Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, LINE);
+    ui.painter().rect_filled(rect, 0.0, line());
 }
 
 pub fn split_hairline(ui: &mut Ui, inset: f32) {
@@ -207,7 +281,7 @@ pub fn split_hairline(ui: &mut Ui, inset: f32) {
         Pos2::new(rect.left() + inset, rect.top()),
         Pos2::new(rect.right(), rect.bottom()),
     );
-    ui.painter().rect_filled(r, 0.0, LINE);
+    ui.painter().rect_filled(r, 0.0, line());
 }
 
 /// A card: hairline border, ink fill, hover-brightening edge.
@@ -222,8 +296,8 @@ pub fn card_styled<R>(
     add: impl FnOnce(&mut Ui) -> R,
 ) -> R {
     let frame = egui::Frame::none()
-        .fill(INK)
-        .stroke(Stroke::new(1.0_f32, LINE))
+        .fill(ink())
+        .stroke(Stroke::new(1.0_f32, line()))
         .rounding(rounding)
         .inner_margin(egui::Margin::same(pad));
 
@@ -233,8 +307,8 @@ pub fn card_styled<R>(
 /// Card that lifts its border when the pointer is inside it.
 pub fn hot_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let frame = egui::Frame::none()
-        .fill(INK)
-        .stroke(Stroke::new(1.0_f32, LINE))
+        .fill(ink())
+        .stroke(Stroke::new(1.0_f32, line()))
         .rounding(18.0)
         .inner_margin(egui::Margin::same(18.0));
     let inner = frame.show(ui, add);
@@ -242,7 +316,7 @@ pub fn hot_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
         ui.painter().rect_stroke(
             inner.response.rect,
             18.0,
-            Stroke::new(1.0_f32, LINE2),
+            Stroke::new(1.0_f32, line2()),
         );
     }
     inner.inner
@@ -250,16 +324,16 @@ pub fn hot_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 
 pub fn pill(ui: &mut Ui, text: &str, lit: bool) {
     let font = micro_font();
-    let galley = ui.painter().layout_no_wrap(tracked(text), font.clone(), TXT);
+    let galley = ui.painter().layout_no_wrap(tracked(text), font.clone(), txt());
     let pad = Vec2::new(9.0, 5.0);
     let size = galley.size() + pad * 2.0;
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    let fill = if lit { a(WHITE, 235) } else { a(WHITE, 8) };
-    let fg = if lit { VOID } else { DIM };
+    let fill = if lit { a(white(), 235) } else { a(white(), 8) };
+    let fg = if lit { bg() } else { dim() };
     ui.painter().rect_filled(rect, size.y * 0.5, fill);
     if !lit {
         ui.painter()
-            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, LINE2));
+            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, line2()));
     }
     ui.painter().text(
         rect.center(),
@@ -275,7 +349,7 @@ pub fn button(ui: &mut Ui, text: &str, primary: bool) -> Response {
     let font = label_font();
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_string(), font.clone(), TXT);
+        .layout_no_wrap(text.to_string(), font.clone(), txt());
     let h = 32.0;
     let w = galley.size().x + 34.0;
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
@@ -284,25 +358,25 @@ pub fn button(ui: &mut Ui, text: &str, primary: bool) -> Response {
     let _ = hover;
 
     if primary {
-        let base = a(WHITE, (235.0 - t * 15.0) as u8);
+        let base = a(white(), (235.0 - t * 15.0) as u8);
         ui.painter().rect_filled(rect, 9.0, base);
         ui.painter().text(
             rect.center(),
             Align2::CENTER_CENTER,
             text,
             font,
-            if resp.hovered() { Color32::BLACK } else { VOID },
+            if resp.hovered() { Color32::BLACK } else { bg() },
         );
     } else {
-        let fill = a(WHITE, (6.0 + t * 8.0) as u8);
+        let fill = a(white(), (6.0 + t * 8.0) as u8);
         ui.painter().rect_filled(rect, 9.0, fill);
         ui.painter().rect_stroke(
             rect,
             9.0,
-            Stroke::new(1.0_f32, if t > 0.02 { LINE2 } else { LINE }),
+            Stroke::new(1.0_f32, if t > 0.02 { line2() } else { line() }),
         );
         ui.painter()
-            .text(rect.center(), Align2::CENTER_CENTER, text, font, TXT);
+            .text(rect.center(), Align2::CENTER_CENTER, text, font, txt());
     }
 
     if resp.hovered() {
@@ -317,27 +391,27 @@ pub fn chip_button(ui: &mut Ui, text: &str, armed: bool) -> Response {
     let galley = ui.painter().layout_no_wrap(
         tracked(text),
         font.clone(),
-        if armed { VOID } else { DIM },
+        if armed { bg() } else { dim() },
     );
     let size = galley.size() + Vec2::new(18.0, 12.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let t = ui.ctx().animate_bool(resp.id, resp.hovered());
     let fill = if armed {
-        a(WHITE, 235)
+        a(white(), 235)
     } else {
-        a(WHITE, (5.0 + t * 9.0) as u8)
+        a(white(), (5.0 + t * 9.0) as u8)
     };
     ui.painter().rect_filled(rect, size.y * 0.5, fill);
     if !armed {
         ui.painter()
-            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, LINE));
+            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, line()));
     }
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
         tracked(text),
         font,
-        if armed { VOID } else { DIM },
+        if armed { bg() } else { dim() },
     );
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -354,18 +428,18 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
     }
     let t = ui.ctx().animate_bool(resp.id, *on);
     let track = if *on {
-        a(WHITE, 235)
+        a(white(), 235)
     } else {
-        a(WHITE, 10)
+        a(white(), 10)
     };
     ui.painter().rect_filled(rect, 11.0, track);
     if !*on {
         ui.painter()
-            .rect_stroke(rect, 11.0, Stroke::new(1.0_f32, LINE2));
+            .rect_stroke(rect, 11.0, Stroke::new(1.0_f32, line2()));
     }
     let r = 8.0;
     let cx = lerp(rect.left() + r + 3.0, rect.right() - r - 3.0, t);
-    let knob = if t > 0.5 { VOID } else { a(WHITE, 170) };
+    let knob = if t > 0.5 { bg() } else { a(white(), 170) };
     ui.painter().circle_filled(Pos2::new(cx, rect.center().y), r, knob);
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -380,7 +454,7 @@ pub fn slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
         rect.center(),
         Vec2::new(rect.width(), 2.0),
     );
-    ui.painter().rect_filled(track, 1.0, a(WHITE, 26));
+    ui.painter().rect_filled(track, 1.0, a(white(), 26));
     let filled = Rect::from_min_max(
         track.left_top(),
         Pos2::new(
@@ -388,10 +462,10 @@ pub fn slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
             track.bottom(),
         ),
     );
-    ui.painter().rect_filled(filled, 1.0, a(WHITE, 210));
+    ui.painter().rect_filled(filled, 1.0, a(white(), 210));
     let cx = track.left() + track.width() * value.clamp(0.0, 1.0);
     ui.painter()
-        .circle_filled(Pos2::new(cx, rect.center().y), 5.0, WHITE);
+        .circle_filled(Pos2::new(cx, rect.center().y), 5.0, white());
 
     if resp.dragged() || resp.is_pointer_button_down_on() {
         if let Some(p) = resp.interact_pointer_pos() {
@@ -419,7 +493,7 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
     let c = rect.center();
     let r = size * 0.5 - 10.0;
     let p = ui.painter();
-    p.circle_stroke(c, r, Stroke::new(1.0_f32, LINE));
+    p.circle_stroke(c, r, Stroke::new(1.0_f32, line()));
 
     let arc = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
     let steps = 96;
@@ -432,7 +506,7 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
         let ang = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::TAU;
         let pt = Pos2::new(c.x + r * ang.cos(), c.y + r * ang.sin());
         if let Some(q) = prev {
-            p.line_segment([q, pt], Stroke::new(2.0_f32, a(WHITE, 230)));
+            p.line_segment([q, pt], Stroke::new(2.0_f32, a(white(), 230)));
         }
         prev = Some(pt);
     }
@@ -441,10 +515,10 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
         Align2::CENTER_CENTER,
         format!("{:.0}", pct),
         num_font(size * 0.30),
-        TXT,
+        txt(),
     );
     let cap = Pos2::new(c.x, c.y + size * 0.15);
-    p.text(cap, Align2::CENTER_CENTER, tracked(caption), micro_font(), FAINT);
+    p.text(cap, Align2::CENTER_CENTER, tracked(caption), micro_font(), faint());
 
     if sweep < 1.0 {
         let y = rect.top() + 8.0 + (size - 16.0) * sweep;
@@ -454,12 +528,12 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
                 Pos2::new(rect.left() + 6.0, y),
                 Pos2::new(rect.right() - 6.0, y),
             ],
-            Stroke::new(1.0_f32, a(WHITE, fade as u8)),
+            Stroke::new(1.0_f32, a(white(), fade as u8)),
         );
         p.circle_filled(
             Pos2::new(rect.right() - 6.0, y),
             2.0,
-            a(WHITE, (fade + 40.0).min(255.0) as u8),
+            a(white(), (fade + 40.0).min(255.0) as u8),
         );
     }
 }
@@ -492,10 +566,10 @@ pub fn spark(ui: &mut Ui, values: &[f32], size: Vec2, max: f32) {
         poly.push(Pos2::new(rect.right(), rect.bottom()));
         poly.push(Pos2::new(rect.left(), rect.bottom()));
         ui.painter()
-            .add(egui::Shape::convex_polygon(poly, a(WHITE, 9), Stroke::NONE));
+            .add(egui::Shape::convex_polygon(poly, a(white(), 9), Stroke::NONE));
     }
     ui.painter()
-        .add(egui::Shape::line(pts, Stroke::new(1.2_f32, a(WHITE, 210))));
+        .add(egui::Shape::line(pts, Stroke::new(1.2_f32, a(white(), 210))));
 }
 
 /// Big number + caption block.
@@ -505,11 +579,11 @@ pub fn metric(ui: &mut Ui, label: &str, value: &str, unit: &str) {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add(egui::Label::new(
-                RichText::new(value).font(num_font(30.0)).color(TXT),
+                RichText::new(value).font(num_font(30.0)).color(txt()),
             ));
             if !unit.is_empty() {
                 ui.add(egui::Label::new(
-                    RichText::new(unit).font(label_font()).color(FAINT),
+                    RichText::new(unit).font(label_font()).color(faint()),
                 ));
             }
         });
@@ -526,25 +600,25 @@ pub fn kv_row(ui: &mut Ui, key: &str, value: &str, accent: bool) {
         Align2::LEFT_CENTER,
         tracked(key),
         micro_font(),
-        FAINT,
+        faint(),
     );
     ui.painter().text(
         Pos2::new(rect.right(), rect.center().y),
         Align2::RIGHT_CENTER,
         value,
         mono_font(11.5),
-        if accent { TXT } else { DIM },
+        if accent { txt() } else { dim() },
     );
 }
 
 pub fn heading(ui: &mut Ui, text: &str) {
     ui.add(egui::Label::new(
-        RichText::new(text).font(num_font(26.0)).color(TXT),
+        RichText::new(text).font(num_font(26.0)).color(txt()),
     ));
 }
 
 pub fn sub(ui: &mut Ui, text: &str) {
     ui.add(egui::Label::new(
-        RichText::new(text).font(body_font()).color(FAINT),
+        RichText::new(text).font(body_font()).color(faint()),
     ));
 }

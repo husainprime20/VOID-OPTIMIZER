@@ -69,6 +69,12 @@ jobs:
             timeout 90 xvfb-run -a -s "-screen 0 1600x1000x24" ./target/release/void || echo "  (view $v failed)"
             ls -la "docs/shots/$v.png" 2>/dev/null || true
           done
+          # the light palette, same deck inverted
+          VOID_THEME=light \
+          VOID_VIEW=dashboard \
+          EFRAME_SCREENSHOT_TO="docs/shots/dashboard-light.png" \
+          LIBGL_ALWAYS_SOFTWARE=1 \
+          timeout 90 xvfb-run -a -s "-screen 0 1600x1000x24" ./target/release/void || echo "  (light shot failed)"
           ls -la docs/shots/
 
       - name: Publish screenshots to the void-preview branch
