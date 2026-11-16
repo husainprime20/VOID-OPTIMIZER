@@ -216,6 +216,10 @@ pub struct App {
     /// Command palette.
     pub palette: bool,
     pub palette_q: String,
+    /// Per-process CPU deltas: who is eating the machine right now.
+    pub thieves: Vec<(String, u32, f32)>,
+    cpu_prev: Vec<(u32, u64)>,
+    pub cpu_prev_at: f64,
     /// Audio starts on frame two so the window is never waiting on WASAPI.
     pub frames: u32,
 }
@@ -309,6 +313,9 @@ impl App {
             guard_at: 0.0,
             palette: false,
             palette_q: String::new(),
+            thieves: Vec::new(),
+            cpu_prev: Vec::new(),
+            cpu_prev_at: 0.0,
             frames: 0,
         }
     }
@@ -661,6 +668,29 @@ impl App {
         if self.view == View::Dashboard && now - self.games_at > 6.0 {
             self.games_at = now;
             self.games = engine::running_games();
+        }
+        if self.view == View::Monitor && now - self.cpu_prev_at > 2.0 {
+            let elapsed = (now - self.cpu_prev_at).clamp(1.0, 6.0);
+            let sample = engine::cpu_times();
+            let cores = crate::platform::logical_cpus().max(1) as f32;
+            if !self.cpu_prev.is_empty() {
+                let mut deltas: Vec<(String, u32, f32)> = Vec::new();
+                for (name, pid, total) in sample.iter() {
+                    if let Some(prev) = self.cpu_prev.iter().find(|(p, _)| p == pid) {
+                        let d = total.saturating_sub(prev.1);
+                        // % of the whole package, so the numbers read like Task Manager
+                        let pct = (d as f64 / (elapsed * 10_000_000.0)) as f32 * 100.0 / cores;
+                        if pct >= 0.2 {
+                            deltas.push((name.clone(), *pid, pct));
+                        }
+                    }
+                }
+                deltas.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+                deltas.truncate(7);
+                self.thieves = deltas;
+            }
+            self.cpu_prev = sample.iter().map(|(_, pid, t)| (*pid, *t)).collect();
+            self.cpu_prev_at = now;
         }
         if self.view == View::Monitor && now - self.procs_at > 5.0 {
             self.procs_at = now;

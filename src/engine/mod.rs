@@ -1417,6 +1417,10 @@ pub fn running_games() -> Vec<(&'static str, &'static str)> {
     out
 }
 
+pub fn cpu_times() -> Vec<(String, u32, u64)> {
+    platform::cpu_times()
+}
+
 pub fn processes() -> Vec<(String, u32, f64)> {
     platform::processes()
 }

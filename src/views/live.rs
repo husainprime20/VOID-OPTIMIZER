@@ -336,6 +336,71 @@ pub fn monitor(app: &mut App, ui: &mut Ui) {
 
     ui.add_space(14.0);
 
+    // ── cpu attribution ──
+    // Nothing else in this category names the process that stole the frame.
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "cpu attribution · last sample");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::chip_button(ui, "boost the top one", false).clicked() {
+                    if let Some((name, pid, _)) = app.thieves.first().cloned() {
+                        app.run_action(ui.ctx(), Action::BoostPid(pid));
+                        app.toast(1, format!("boosting {} · pid {}", theme::clip(&name, 24), pid));
+                    }
+                }
+            });
+        });
+        ui.add_space(4.0);
+        ui.add(egui::Label::new(
+            RichText::new(
+                "Kernel + user time per process, differenced between two samples. This is how VOID names what actually took the frame.",
+            )
+            .font(micro_font())
+            .color(ghost()),
+        ));
+        ui.add_space(10.0);
+
+        if app.thieves.is_empty() {
+            ui.add(egui::Label::new(
+                RichText::new("Sampling… this card fills in on the monitor view.")
+                    .font(body_font())
+                    .color(faint()),
+            ));
+        }
+        let top = app
+            .thieves
+            .iter()
+            .map(|(_, _, p)| *p)
+            .fold(0.0f32, f32::max)
+            .max(1.0);
+        for (name, _pid, pct) in app.thieves.iter().take(7) {
+            ui.horizontal(|ui| {
+                ui.add(egui::Label::new(
+                    RichText::new(theme::clip(name, 28))
+                        .font(mono_font(10.5))
+                        .color(if *pct > 8.0 { txt() } else { dim() }),
+                ));
+                ui.add_space(8.0);
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new((ui.available_width() - 74.0).max(60.0), 5.0), Sense::hover());
+                ui.painter().rect_filled(rect, 2.5, a(white(), 12));
+                let w = (pct / top).clamp(0.02, 1.0) * rect.width();
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(rect.min, Vec2::new(w, rect.height())),
+                    2.5,
+                    a(white(), if *pct > 8.0 { 225 } else { 150 }),
+                );
+                ui.add(egui::Label::new(
+                    RichText::new(format!("{:.1}%", pct)).font(mono_font(10.0)).color(faint()),
+                ));
+            });
+            ui.add_space(4.0);
+        }
+    });
+
+    ui.add_space(14.0);
+
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
