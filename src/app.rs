@@ -767,6 +767,10 @@ impl App {
     /// Rain, painted inside the panel that calls it: behind the cards, visible
     /// in the gutters, clipped by the panel. Deterministic per drop, no state.
     fn paint_rain(&self, ui: &Ui, now: f64) {
+        self.paint_rain_scaled(ui, now, 1.0)
+    }
+
+    fn paint_rain_scaled(&self, ui: &Ui, now: f64, scale: f32) {
         if !self.state.motion || !self.state.rain {
             return;
         }
@@ -774,7 +778,7 @@ impl App {
         let p = ui.painter().with_clip_rect(rect);
         let t = now as f32;
         for band in 0..3 {
-            let count = [34, 22, 13][band];
+            let count = (([34, 22, 13][band] as f32) * scale) as usize;
             let speed = [900.0, 560.0, 320.0][band];
             let length = [24.0, 38.0, 56.0][band];
             let alpha = [14.0, 22.0, 30.0][band];
@@ -1779,7 +1783,8 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(18.0, 18.0)),
             )
             .show(ctx, |ui| {
-                self.paint_rain(ui, now);
+                // the rail carries a thinner field, so the nav stays legible
+                self.paint_rain_scaled(ui, now, 0.45);
                 self.rail(ui, now);
             });
 
