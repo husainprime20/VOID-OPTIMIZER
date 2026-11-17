@@ -829,11 +829,11 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 ui.horizontal(|ui| {
                     theme::micro(ui, "theme");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if theme::chip_button(ui, "porcelain", theme::light()).clicked() {
-                            app.run_action(ui.ctx(), Action::Theme(1));
-                        }
-                        if theme::chip_button(ui, "obsidian", !theme::light()).clicked() {
-                            app.run_action(ui.ctx(), Action::Theme(0));
+                        let sel = if theme::light() { 1 } else { 0 };
+                        if let Some(hit) = theme::segmented(ui, &["obsidian", "porcelain"], sel, 196.0) {
+                            if hit != sel {
+                                app.run_action(ui.ctx(), Action::Theme(hit as u8));
+                            }
                         }
                     });
                 });
@@ -858,7 +858,17 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                 rows.push((
                     "Rain",
                     app.state.rain,
-                    "ambient streaks behind the deck".into(),
+                    "water standing on the glass".into(),
+                ));
+                rows.push((
+                    "Wallpaper",
+                    app.state.bands,
+                    "drifting black and white band field".into(),
+                ));
+                rows.push((
+                    "Soft cursor",
+                    app.state.soft_cursor,
+                    "white dot with a lagging ring".into(),
                 ));
                 rows.push((
                     "Auto-loadout",
@@ -878,6 +888,10 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                                     }
                                     "Void guard" => app.state.guard = !app.state.guard,
                                     "Rain" => app.state.rain = !app.state.rain,
+                                    "Wallpaper" => app.state.bands = !app.state.bands,
+                                    "Soft cursor" => {
+                                        app.state.soft_cursor = !app.state.soft_cursor
+                                    }
                                     "Auto-loadout" => {
                                         app.state.auto_switch = !app.state.auto_switch
                                     }

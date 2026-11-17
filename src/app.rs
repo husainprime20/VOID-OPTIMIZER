@@ -248,6 +248,8 @@ pub struct App {
     pub cpu_prev_at: f64,
     /// Audio starts on frame two so the window is never waiting on WASAPI.
     pub frames: u32,
+    /// Whether the OS pointer is currently hidden in favour of the drawn one.
+    cursor_hidden: bool,
 }
 
 impl App {
@@ -348,6 +350,7 @@ impl App {
             cpu_prev: Vec::new(),
             cpu_prev_at: 0.0,
             frames: 0,
+            cursor_hidden: false,
         }
     }
 
@@ -871,74 +874,78 @@ impl App {
         if !self.state.motion || !self.state.rain {
             return;
         }
-        let rect = ui.max_rect();
-        let p = ui.painter().with_clip_rect(rect);
-        let t = now as f32;
-        for band in 0..3 {
-            let count = (([34, 22, 13][band] as f32) * scale) as usize;
-            let speed = [900.0, 560.0, 320.0][band];
-            let length = [24.0, 38.0, 56.0][band];
-            let alpha = [14.0, 22.0, 30.0][band];
-            let width = [0.7, 0.9, 1.1][band];
-            for i in 0..count {
-                let seed = (band as f32 + 1.0) * 97.0 + i as f32 * 13.7;
-                let x = ((seed * 7919.0).sin().fract().abs()) * rect.width();
-                let phase = (seed * 3571.0).cos().fract().abs();
-                let span = rect.height() + length * 2.0;
-                let travel = (t * speed * (0.85 + phase * 0.3) + phase * 1600.0) % span;
-                let y = travel - length;
-                let drift = (travel * 0.02).sin() * 5.0;
-                let edge = ((travel / 90.0).min(1.0) * ((span - travel) / 120.0).min(1.0))
-                    .clamp(0.0, 1.0);
-                p.line_segment(
-                    [
-                        Pos2::new(rect.left() + x + drift, rect.top() + y),
-                        Pos2::new(rect.left() + x + drift - 2.0, rect.top() + y + length),
-                    ],
-                    Stroke::new(width, a(white(), (alpha * edge) as u8)),
-                );
-            }
+        theme::droplets(ui.painter(), ui.max_rect(), now, scale);
+    }
+
+    /// The band field: the drifting black/white wallpaper. Painted inside the
+    /// deck, behind every card, so text never sits on the moving part.
+    fn paint_bands(&self, ui: &Ui, now: f64, scale: f32) {
+        if !self.state.bands {
+            return;
         }
+        theme::bands_scaled(ui.painter(), ui.max_rect(), now, scale);
     }
 
     fn rail(&mut self, ui: &mut Ui, now: f64) {
-        ui.add_space(4.0);
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::hover());
-        ui.painter().text(
-            Pos2::new(rect.left(), rect.center().y - 2.0),
-            Align2::LEFT_BOTTOM,
-            "VOID",
-            title_font(25.0),
-            txt(),
-        );
-        // breathing dot
+        ui.add_space(2.0);
         let t = self.started.elapsed().as_secs_f32();
         let pulse = if self.state.motion {
             (t * 1.5).sin() * 0.5 + 0.5
         } else {
             1.0
         };
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 48.0), Sense::hover());
+
+        // the mark: a glass tile carrying the hexagon, then the wordmark beside it
+        let tile = Rect::from_min_size(
+            Pos2::new(rect.left(), rect.center().y - 15.0),
+            Vec2::splat(30.0),
+        );
+        theme::brand_tile(ui.painter(), tile, 0.18 + 0.22 * pulse);
+
+        let tx = tile.right() + 12.0;
+        ui.painter().text(
+            Pos2::new(tx, rect.center().y - 3.0),
+            Align2::LEFT_BOTTOM,
+            "VOID",
+            title_font(23.0),
+            txt(),
+        );
+        // the shine: a light sweep that crosses the wordmark and is gone
+        if self.state.motion {
+            let glyph = Rect::from_min_max(
+                Pos2::new(tx - 2.0, rect.center().y - 22.0),
+                Pos2::new(tx + 62.0, rect.center().y - 2.0),
+            );
+            let phase = ((t * 0.18) % 1.0).clamp(0.0, 1.0);
+            let cx = glyph.left() - 40.0 + (glyph.width() + 80.0) * phase;
+            let clip = ui.painter().with_clip_rect(glyph);
+            let pts = vec![
+                Pos2::new(cx, glyph.top()),
+                Pos2::new(cx + 18.0, glyph.top()),
+                Pos2::new(cx + 8.0, glyph.bottom()),
+                Pos2::new(cx - 10.0, glyph.bottom()),
+            ];
+            clip.add(egui::Shape::convex_polygon(
+                pts,
+                a(Color32::WHITE, 54),
+                Stroke::NONE,
+            ));
+        }
         ui.painter().circle_filled(
-            Pos2::new(rect.right() - 3.0, rect.center().y - 6.0),
+            Pos2::new(rect.right() - 3.0, rect.center().y - 8.0),
             2.5,
             a(white(), (70.0 + 150.0 * pulse) as u8),
         );
         ui.painter().text(
-            Pos2::new(rect.left(), rect.center().y + 9.0),
+            Pos2::new(tx, rect.center().y + 12.0),
             Align2::LEFT_CENTER,
-            engine::VERSION,
-            mono_font(9.5),
-            ghost(),
-        );
-        ui.painter().text(
-            Pos2::new(rect.right() - 3.0, rect.center().y + 9.0),
-            Align2::RIGHT_CENTER,
-            "native",
+            format!("{}  ·  native", engine::VERSION),
             mono_font(9.5),
             ghost(),
         );
 
-        ui.add_space(14.0);
+        ui.add_space(12.0);
         theme::hairline(ui);
         ui.add_space(10.0);
         theme::micro(ui, "workspace");
@@ -1693,16 +1700,16 @@ impl App {
             .show(ctx, |ui| {
                 ui.set_width(600.0);
                 egui::Frame::none()
-                    .fill(ink())
-                    .stroke(Stroke::new(1.0_f32, line2()))
-                    .rounding(16.0)
+                    .fill(theme::glass(246))
+                    .stroke(Stroke::new(1.0_f32, theme::a(theme::white(), 44)))
+                    .rounding(24.0)
                     .inner_margin(egui::Margin::same(26.0))
                     .show(ui, |ui| {
                         ui.set_width(548.0);
                         ui.add(egui::Label::new(
                             RichText::new(tracked(&modal.kicker))
                                 .font(micro_font())
-                                .color(ghost()),
+                                .color(if modal.info_only { mint() } else { ghost() }),
                         ));
                         ui.add_space(8.0);
                         ui.add(egui::Label::new(
@@ -1885,12 +1892,19 @@ impl eframe::App for App {
             .resizable(false)
             .frame(
                 egui::Frame::none()
-                    .fill(theme::rail_bg())
+                    .fill(theme::a(theme::bg(), 176))
                     .inner_margin(egui::Margin::symmetric(18.0, 18.0)),
             )
             .show(ctx, |ui| {
-                // the rail carries a thinner field, so the nav stays legible
-                self.paint_rain_scaled(ui, now, 0.45);
+                // glass plane: a thinner field of water, and its own hairline edge
+                self.paint_rain_scaled(ui, now, 0.4);
+                let edge = Rect::from_min_max(
+                    Pos2::new(ui.max_rect().right() + 17.0, ui.max_rect().top()),
+                    Pos2::new(ui.max_rect().right() + 18.0, ui.max_rect().bottom()),
+                );
+                ui.ctx()
+                    .layer_painter(ui.layer_id())
+                    .rect_filled(edge, 0.0, theme::a(theme::white(), 26));
                 self.rail(ui, now);
             });
 
@@ -1898,13 +1912,13 @@ impl eframe::App for App {
             .exact_height(84.0)
             .frame(
                 egui::Frame::none()
-                    .fill(bg())
+                    .fill(Color32::TRANSPARENT)
                     .inner_margin(egui::Margin::symmetric(30.0, 16.0)),
             )
             .show(ctx, |ui| {
                 self.topbar(ui, now);
                 let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
-                ui.painter().rect_filled(r, 0.0, line());
+                ui.painter().rect_filled(r, 0.0, theme::a(theme::white(), 26));
             });
 
         if self.busy() {
@@ -1912,7 +1926,7 @@ impl eframe::App for App {
                 .exact_height(41.0)
                 .frame(
                     egui::Frame::none()
-                        .fill(theme::ink2())
+                        .fill(theme::glass(206))
                         .inner_margin(egui::Margin::symmetric(30.0, 10.0)),
                 )
                 .show(ctx, |ui| {
@@ -1924,7 +1938,7 @@ impl eframe::App for App {
             .exact_height(27.0)
             .frame(
                 egui::Frame::none()
-                    .fill(theme::rail_bg())
+                    .fill(theme::a(theme::bg(), 214))
                     .inner_margin(egui::Margin::symmetric(18.0, 5.0)),
             )
             .show(ctx, |ui| {
@@ -1934,10 +1948,11 @@ impl eframe::App for App {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
-                    .fill(bg())
+                    .fill(Color32::TRANSPARENT)
                     .inner_margin(egui::Margin::symmetric(30.0, 20.0)),
             )
             .show(ctx, |ui| {
+                self.paint_bands(ui, now, 1.0);
                 self.paint_rain(ui, now);
                 // wipe on view change: a hairline that sweeps across the top
                 let age = (now - self.view_at) as f32;
@@ -1970,5 +1985,19 @@ impl eframe::App for App {
         self.draw_toasts(ctx, now);
         self.draw_modal(ctx);
         self.draw_palette(ctx);
+
+        // the pointer: VOID's own dot, with the OS cursor out of the way
+        if self.cursor_hidden != self.state.soft_cursor {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorVisible(
+                !self.state.soft_cursor,
+            ));
+            self.cursor_hidden = self.state.soft_cursor;
+        }
+        if self.state.soft_cursor {
+            theme::cursor_overlay(ctx, now);
+            if self.state.motion {
+                ctx.request_repaint_after(std::time::Duration::from_millis(120));
+            }
+        }
     }
 }

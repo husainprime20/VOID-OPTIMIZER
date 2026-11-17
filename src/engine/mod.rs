@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.7.0";
+pub const VERSION: &str = "0.8.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -77,6 +77,10 @@ pub struct State {
     /// Discord application client secret, pasted by the user. It never leaves
     /// this machine except to call discord.com during the token exchange.
     pub secret: String,
+    /// The drifting black/white band field behind the deck.
+    pub bands: bool,
+    /// Draw the pointer as a white dot with a lagging ring.
+    pub soft_cursor: bool,
 }
 
 pub struct Outcome {
@@ -114,6 +118,8 @@ impl State {
             presence: true,
             guard: true,
             rain: true,
+            bands: true,
+            soft_cursor: true,
             auto_switch: false,
             secret: String::new(),
         };
@@ -169,6 +175,8 @@ impl State {
                     "presence" => self.presence = truthy(v),
                     "guard" => self.guard = truthy(v),
                     "rain" => self.rain = truthy(v),
+                    "bands" => self.bands = truthy(v),
+                    "soft_cursor" => self.soft_cursor = truthy(v),
                     "auto_switch" => self.auto_switch = truthy(v),
                     "secret" => self.secret = v.to_string(),
                     "applied" => {
@@ -186,7 +194,7 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nauto_switch={}\nsecret={}\napplied={}\n",
+            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nbands={}\nsoft_cursor={}\nauto_switch={}\nsecret={}\napplied={}\n",
             self.volume,
             self.intensity,
             if self.muted { 1 } else { 0 },
@@ -197,6 +205,8 @@ impl State {
             if self.presence { 1 } else { 0 },
             if self.guard { 1 } else { 0 },
             if self.rain { 1 } else { 0 },
+            if self.bands { 1 } else { 0 },
+            if self.soft_cursor { 1 } else { 0 },
             if self.auto_switch { 1 } else { 0 },
             self.secret,
             self.applied.iter().cloned().collect::<Vec<String>>().join(",")
@@ -224,6 +234,8 @@ impl State {
             "presence" => self.presence = truthy(value),
             "guard" => self.guard = truthy(value),
             "rain" => self.rain = truthy(value),
+            "bands" => self.bands = truthy(value),
+            "soft_cursor" => self.soft_cursor = truthy(value),
             "auto_switch" => self.auto_switch = truthy(value),
             "secret" => self.secret = value.to_string(),
             "muted" => self.muted = truthy(value),

@@ -1,7 +1,18 @@
-// VOID — design system.
+// VOID — design system: MONOCHROME GLASS.
 //
-// One palette, one type scale, one set of primitives. Every pixel in the app
-// comes from here so the whole surface stays monochrome and consistent.
+// The language, in one line: a single near-black surface carrying white light —
+// glass cards with hairline rims, a drifting black/white band field underneath,
+// water standing on the glass, toggles that spring, and a dot for a cursor.
+//
+// Rules this file obeys (docs/UI-REFERENCE.md):
+//   1. one accent: white. colour only carries meaning (mint done / amber warn /
+//      rose error), never decoration.
+//   2. glass, never flat fills: translucent ink + 1 px white rim + top highlight.
+//   3. answers are soft: hover = glow and a 1 px lift, never a colour swap.
+//   4. motion arrives: eased, staggered, never popped.
+//   5. instrumentation type: tracked mono micro-labels.
+//
+// Every pixel in the app comes from here, so the whole surface stays consistent.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -45,49 +56,70 @@ fn pick(dark: (u8, u8, u8), pale: (u8, u8, u8)) -> Color32 {
 
 /// Window.
 pub fn bg() -> Color32 {
-    pick((4, 4, 5), (245, 245, 243))
+    pick((8, 8, 10), (244, 244, 246))
 }
-/// Card.
+/// Card. Kept opaque for anything that must sit on its own (popups, tooltips).
 pub fn ink() -> Color32 {
-    pick((9, 9, 11), (255, 255, 255))
+    pick((11, 11, 13), (255, 255, 255))
 }
 /// Raised surface.
 pub fn ink2() -> Color32 {
-    pick((14, 14, 17), (238, 238, 235))
+    pick((17, 17, 20), (236, 236, 239))
 }
 /// Primary text.
 pub fn txt() -> Color32 {
-    pick((246, 246, 247), (17, 17, 20))
+    pick((241, 241, 241), (17, 17, 20))
 }
 /// Secondary text.
 pub fn dim() -> Color32 {
-    pick((158, 158, 165), (86, 86, 94))
+    pick((150, 152, 160), (86, 86, 94))
 }
 /// Tertiary text.
 pub fn faint() -> Color32 {
-    pick((112, 112, 120), (122, 122, 130))
+    pick((124, 125, 133), (118, 118, 126))
 }
-/// Quaternary text.
+/// Quaternary text / micro-labels.
 pub fn ghost() -> Color32 {
-    pick((78, 78, 86), (158, 158, 164))
+    pick((104, 106, 114), (150, 150, 158))
 }
-/// Rail surface — a touch darker than the window in Obsidian, a touch warmer in
-/// Porcelain, so the navigation reads as a separate plane in both.
+/// Rail surface. A plane just behind the deck, so navigation reads as its own layer.
 pub fn rail_bg() -> Color32 {
-    pick((6, 6, 8), (238, 238, 234))
+    pick((6, 6, 8), (236, 236, 234))
 }
 /// Hairline.
 pub fn line() -> Color32 {
-    pick((26, 26, 30), (226, 226, 222))
+    pick((30, 30, 35), (222, 222, 218))
 }
-/// Stronger divider.
+/// Stronger divider / hover rim.
 pub fn line2() -> Color32 {
-    pick((46, 46, 53), (204, 204, 200))
+    pick((58, 58, 66), (198, 198, 194))
 }
-/// The accent: pure white in Obsidian, near-black ink in Porcelain. Every fill
-/// and dot in the app is built from this with an alpha, so it inverts cleanly.
+/// The accent: pure white in Obsidian, near-black ink in Porcelain.
 pub fn white() -> Color32 {
     pick((255, 255, 255), (14, 14, 16))
+}
+
+// ── meaning ──────────────────────────────────────────────────────────────────
+/// Done.
+pub fn mint() -> Color32 {
+    Color32::from_rgb(110, 231, 183)
+}
+/// Careful.
+pub fn amber() -> Color32 {
+    Color32::from_rgb(255, 204, 107)
+}
+/// Broke.
+pub fn rose() -> Color32 {
+    Color32::from_rgb(255, 122, 148)
+}
+
+/// A glass surface: translucent ink that lets the band field underneath live.
+pub fn glass(alpha: u8) -> Color32 {
+    if light() {
+        Color32::from_rgba_unmultiplied(252, 252, 253, alpha)
+    } else {
+        Color32::from_rgba_unmultiplied(8, 8, 10, alpha)
+    }
 }
 
 /// The five faces VOID is set in: IBM Plex Sans Light / Regular / Medium and
@@ -116,6 +148,12 @@ pub fn clip(s: &str, n: usize) -> String {
 
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t.clamp(0.0, 1.0)
+}
+
+/// cubic-bezier(.16,1,.3,1) — the entrance curve.
+pub fn ease(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    1.0 - (1.0 - t).powi(3)
 }
 
 // ── type ─────────────────────────────────────────────────────────────────────
@@ -227,35 +265,43 @@ pub fn restyle(ctx: &egui::Context) {
 
     style.spacing.item_spacing = Vec2::new(8.0, 8.0);
     style.spacing.button_padding = Vec2::new(14.0, 8.0);
-    style.spacing.interact_size.y = 24.0;
+    style.spacing.interact_size.y = 26.0;
     style.spacing.scroll.bar_width = 6.0;
     style.spacing.scroll.floating = true;
 
-    let mut v = egui::Visuals::dark();
+    let mut v = if light() {
+        egui::Visuals::light()
+    } else {
+        egui::Visuals::dark()
+    };
     v.override_text_color = Some(dim());
     v.panel_fill = bg();
-    v.window_fill = bg();
+    v.window_fill = ink();
     v.extreme_bg_color = ink();
     v.faint_bg_color = ink2();
-    v.window_rounding = 14.0.into();
-    v.menu_rounding = 14.0.into();
+    v.window_rounding = 24.0.into();
+    v.menu_rounding = 16.0.into();
     v.selection.bg_fill = a(white(), 40);
     v.selection.stroke = Stroke::new(1.0_f32, txt());
     v.widgets.noninteractive.bg_fill = ink();
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, line());
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, dim());
-    v.widgets.inactive.bg_fill = ink2();
-    v.widgets.inactive.weak_bg_fill = ink2();
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, line2());
+    v.widgets.noninteractive.rounding = 12.0.into();
+    v.widgets.inactive.bg_fill = a(white(), 8);
+    v.widgets.inactive.weak_bg_fill = a(white(), 8);
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, a(white(), 26));
     v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, txt());
-    v.widgets.hovered.bg_fill = ink2();
-    v.widgets.hovered.weak_bg_fill = ink2();
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, a(white(), 90));
+    v.widgets.inactive.rounding = 12.0.into();
+    v.widgets.hovered.bg_fill = a(white(), 16);
+    v.widgets.hovered.weak_bg_fill = a(white(), 16);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, a(white(), 70));
     v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, white());
-    v.widgets.active.bg_fill = ink2();
-    v.widgets.active.weak_bg_fill = ink2();
+    v.widgets.hovered.rounding = 12.0.into();
+    v.widgets.active.bg_fill = a(white(), 22);
+    v.widgets.active.weak_bg_fill = a(white(), 22);
     v.widgets.active.bg_stroke = Stroke::new(1.0_f32, white());
     v.widgets.active.fg_stroke = Stroke::new(1.0_f32, white());
+    v.widgets.active.rounding = 12.0.into();
     style.visuals = v;
 
     ctx.set_style(style);
@@ -284,7 +330,40 @@ pub fn split_hairline(ui: &mut Ui, inset: f32) {
     ui.painter().rect_filled(r, 0.0, line());
 }
 
-/// A card: hairline border, ink fill, hover-brightening edge.
+/// The glass recipe: translucent ink, 1 px white rim, 1 px top highlight.
+pub fn glass_frame(pad: f32, rounding: f32) -> egui::Frame {
+    egui::Frame::none()
+        .fill(glass(if light() { 232 } else { 214 }))
+        .stroke(Stroke::new(1.0_f32, a(white(), 26)))
+        .rounding(rounding)
+        .inner_margin(egui::Margin::same(pad))
+}
+
+fn top_highlight(p: &egui::Painter, r: Rect, rounding: f32) {
+    p.line_segment(
+        [
+            Pos2::new(r.left() + rounding, r.top() + 0.5),
+            Pos2::new(r.right() - rounding, r.top() + 0.5),
+        ],
+        Stroke::new(1.0_f32, a(white(), if light() { 200 } else { 40 })),
+    );
+}
+
+fn spotlight(ui: &Ui, r: Rect, rounding: f32) {
+    let Some(pos) = ui.ctx().pointer_latest_pos() else {
+        return;
+    };
+    if !r.contains(pos) {
+        return;
+    }
+    let p = ui.painter().with_clip_rect(r);
+    for (rad, alpha) in [(170.0_f32, 5u8), (110.0, 5), (56.0, 6)] {
+        p.circle_filled(pos, rad, a(white(), alpha));
+    }
+    let _ = rounding;
+}
+
+/// A card: glass, hairline rim, top highlight, and a spotlight under the pointer.
 pub fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     card_styled(ui, 18.0, 16.0, add)
 }
@@ -295,42 +374,40 @@ pub fn card_styled<R>(
     rounding: f32,
     add: impl FnOnce(&mut Ui) -> R,
 ) -> R {
-    let frame = egui::Frame::none()
-        .fill(ink())
-        .stroke(Stroke::new(1.0_f32, line()))
-        .rounding(rounding)
-        .inner_margin(egui::Margin::same(pad));
-
-    let out = frame.show(ui, add);
-    // a one-pixel highlight along the top edge: enough depth to read as a
-    // surface without a single gradient
+    let out = glass_frame(pad, rounding).show(ui, add);
     let r = out.response.rect;
-    ui.painter().line_segment(
-        [
-            Pos2::new(r.left() + rounding, r.top() + 0.5),
-            Pos2::new(r.right() - rounding, r.top() + 0.5),
-        ],
-        Stroke::new(1.0_f32, a(white(), if light() { 10 } else { 14 })),
-    );
+    top_highlight(ui.painter(), r, rounding);
+    // hover: the rim brightens — the whole answer, no colour change
+    let t = ui.ctx().animate_bool(out.response.id, out.response.hovered());
+    if t > 0.01 {
+        ui.painter().rect_stroke(
+            r,
+            rounding,
+            Stroke::new(1.0_f32, a(white(), (26.0 + 34.0 * t) as u8)),
+        );
+    }
+    spotlight(ui, r, rounding);
     out.inner
 }
 
-/// Card that lifts its border when the pointer is inside it.
+/// Card that lifts its rim when the pointer is inside it.
 pub fn hot_card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let frame = egui::Frame::none()
-        .fill(ink())
-        .stroke(Stroke::new(1.0_f32, line()))
-        .rounding(18.0)
-        .inner_margin(egui::Margin::same(18.0));
-    let inner = frame.show(ui, add);
-    if ui.rect_contains_pointer(inner.response.rect) {
-        ui.painter().rect_stroke(
-            inner.response.rect,
-            18.0,
-            Stroke::new(1.0_f32, line2()),
+    card_styled(ui, 18.0, 18.0, add)
+}
+
+/// A round glow behind a shape: three expanding strokes, alphas falling off.
+fn glow(p: &egui::Painter, rect: Rect, rounding: f32, color: Color32, strength: f32) {
+    if strength <= 0.01 {
+        return;
+    }
+    for (grow, alpha) in [(1.0_f32, 34.0_f32), (3.0, 16.0), (6.0, 8.0)] {
+        let r = rect.expand(grow);
+        p.rect_stroke(
+            r,
+            rounding + grow,
+            Stroke::new(1.2_f32, a(color, (alpha * strength) as u8)),
         );
     }
-    inner.inner
 }
 
 pub fn pill(ui: &mut Ui, text: &str, lit: bool) {
@@ -339,53 +416,73 @@ pub fn pill(ui: &mut Ui, text: &str, lit: bool) {
     let pad = Vec2::new(9.0, 5.0);
     let size = galley.size() + pad * 2.0;
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    let fill = if lit { a(white(), 235) } else { a(white(), 8) };
-    let fg = if lit { bg() } else { dim() };
-    ui.painter().rect_filled(rect, size.y * 0.5, fill);
-    if !lit {
+    if lit {
+        ui.painter().rect_filled(rect, size.y * 0.5, a(white(), 238));
+        glow(ui.painter(), rect, size.y * 0.5, white(), 0.5);
+    } else {
+        ui.painter().rect_filled(rect, size.y * 0.5, a(white(), 8));
         ui.painter()
-            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, line2()));
+            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, a(white(), 26)));
     }
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        tracked(text),
-        font,
-        fg,
-    );
+    let fg = if lit { bg() } else { dim() };
+    ui.painter()
+        .text(rect.center(), Align2::CENTER_CENTER, tracked(text), font, fg);
 }
 
-/// Primary / ghost button. Primary = solid white with ink text.
+/// Primary / ghost button. Primary is a white slab that glows and shimmers;
+/// ghost is glass that brightens. Both lift a pixel on hover.
 pub fn button(ui: &mut Ui, text: &str, primary: bool) -> Response {
     let font = label_font();
     let galley = ui
         .painter()
         .layout_no_wrap(text.to_string(), font.clone(), txt());
-    let h = 32.0;
-    let w = galley.size().x + 34.0;
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
-    let hover = if resp.hovered() { 1.0 } else { 0.0 };
+    let h = 34.0;
+    let w = galley.size().x + 40.0;
+    let (slot, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
     let t = ui.ctx().animate_bool(resp.id, resp.hovered());
-    let _ = hover;
+    let lift = 1.0 * t;
+    let rect = slot.translate(Vec2::new(0.0, -lift));
 
     if primary {
-        let base = a(white(), (235.0 - t * 15.0) as u8);
-        ui.painter().rect_filled(rect, 9.0, base);
+        let base = a(white(), (236.0 + 19.0 * t) as u8);
+        ui.painter().rect_filled(rect, 12.0, base);
+        glow(ui.painter(), rect, 12.0, white(), t * 0.9);
+        // light sweep across the face while hovered
+        if t > 0.02 {
+            let time = ui.input(|i| i.time) as f32;
+            let phase = (time * 0.55) % 1.0;
+            let band = 46.0;
+            let cx = rect.left() - band + (rect.width() + band * 2.0) * phase;
+            let clip = ui.painter().with_clip_rect(rect.shrink(2.0));
+            let pts = vec![
+                Pos2::new(cx, rect.top()),
+                Pos2::new(cx + band, rect.top()),
+                Pos2::new(cx + band - 18.0, rect.bottom()),
+                Pos2::new(cx - 18.0, rect.bottom()),
+            ];
+            clip.add(egui::Shape::convex_polygon(
+                pts,
+                a(Color32::WHITE, (22.0 * t) as u8),
+                Stroke::NONE,
+            ));
+            ui.ctx().request_repaint();
+        }
         ui.painter().text(
             rect.center(),
             Align2::CENTER_CENTER,
             text,
             font,
-            if resp.hovered() { Color32::BLACK } else { bg() },
+            if light() { Color32::WHITE } else { bg() },
         );
     } else {
-        let fill = a(white(), (6.0 + t * 8.0) as u8);
-        ui.painter().rect_filled(rect, 9.0, fill);
+        ui.painter()
+            .rect_filled(rect, 12.0, a(white(), (8.0 + 9.0 * t) as u8));
         ui.painter().rect_stroke(
             rect,
-            9.0,
-            Stroke::new(1.0_f32, if t > 0.02 { line2() } else { line() }),
+            12.0,
+            Stroke::new(1.0_f32, a(white(), (26.0 + 44.0 * t) as u8)),
         );
+        glow(ui.painter(), rect, 12.0, white(), t * 0.45);
         ui.painter()
             .text(rect.center(), Align2::CENTER_CENTER, text, font, txt());
     }
@@ -396,7 +493,7 @@ pub fn button(ui: &mut Ui, text: &str, primary: bool) -> Response {
     resp
 }
 
-/// Small square/round chain control used in the header and in cards.
+/// Small pill control used in headers and cards.
 pub fn chip_button(ui: &mut Ui, text: &str, armed: bool) -> Response {
     let font = micro_font();
     let galley = ui.painter().layout_no_wrap(
@@ -404,18 +501,20 @@ pub fn chip_button(ui: &mut Ui, text: &str, armed: bool) -> Response {
         font.clone(),
         if armed { bg() } else { dim() },
     );
-    let size = galley.size() + Vec2::new(18.0, 12.0);
+    let size = galley.size() + Vec2::new(20.0, 13.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
     let t = ui.ctx().animate_bool(resp.id, resp.hovered());
-    let fill = if armed {
-        a(white(), 235)
+    if armed {
+        ui.painter().rect_filled(rect, size.y * 0.5, a(white(), 238));
+        glow(ui.painter(), rect, size.y * 0.5, white(), 0.45);
     } else {
-        a(white(), (5.0 + t * 9.0) as u8)
-    };
-    ui.painter().rect_filled(rect, size.y * 0.5, fill);
-    if !armed {
         ui.painter()
-            .rect_stroke(rect, size.y * 0.5, Stroke::new(1.0_f32, line()));
+            .rect_filled(rect, size.y * 0.5, a(white(), (5.0 + 10.0 * t) as u8));
+        ui.painter().rect_stroke(
+            rect,
+            size.y * 0.5,
+            Stroke::new(1.0_f32, a(white(), (22.0 + 40.0 * t) as u8)),
+        );
     }
     ui.painter().text(
         rect.center(),
@@ -430,53 +529,137 @@ pub fn chip_button(ui: &mut Ui, text: &str, armed: bool) -> Response {
     resp
 }
 
-/// Toggle switch: 40×22, animated knob.
+/// Segmented control (the sliding indicator from the kit). Returns the clicked
+/// index, if any.
+pub fn segmented(ui: &mut Ui, items: &[&str], sel: usize, width: f32) -> Option<usize> {
+    let h = 32.0;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, h), Sense::hover());
+    ui.painter().rect_filled(rect, 14.0, a(white(), 7));
+    ui.painter()
+        .rect_stroke(rect, 14.0, Stroke::new(1.0_f32, a(white(), 22)));
+
+    let inner = rect.shrink(4.0);
+    let seg_w = inner.width() / items.len().max(1) as f32;
+    let target = inner.left() + seg_w * sel as f32;
+    let x = ui
+        .ctx()
+        .animate_value_with_time(ui.id().with("seg-x"), target, 0.16);
+    let ind = Rect::from_min_size(Pos2::new(x, inner.top()), Vec2::new(seg_w, inner.height()));
+    ui.painter().rect_filled(ind, 10.0, a(white(), 26));
+    ui.painter()
+        .rect_stroke(ind, 10.0, Stroke::new(1.0_f32, a(white(), 46)));
+
+    let mut hit = None;
+    for (i, label) in items.iter().enumerate() {
+        let cell = Rect::from_min_size(
+            Pos2::new(inner.left() + seg_w * i as f32, inner.top()),
+            Vec2::new(seg_w, inner.height()),
+        );
+        let r = ui.interact(cell, ui.id().with(("seg", i)), Sense::click());
+        if r.clicked() {
+            hit = Some(i);
+        }
+        let on = i == sel;
+        let alpha = if on {
+            255
+        } else if r.hovered() {
+            210
+        } else {
+            130
+        };
+        ui.painter().text(
+            cell.center(),
+            Align2::CENTER_CENTER,
+            tracked(label),
+            micro_font(),
+            a(if light() { txt() } else { Color32::WHITE }, alpha),
+        );
+        if r.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+    }
+    hit
+}
+
+/// Toggle switch: 36×20, light track, ink knob, spring travel.
 pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
-    let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(40.0, 22.0), Sense::click());
+    let scale = ui.ctx().pixels_per_point().clamp(1.0, 2.0);
+    let (slot, mut resp) = ui.allocate_exact_size(Vec2::new(40.0, 26.0), Sense::click());
     if resp.clicked() {
         *on = !*on;
         resp.mark_changed();
     }
     let t = ui.ctx().animate_bool(resp.id, *on);
-    let track = if *on {
-        a(white(), 235)
-    } else {
-        a(white(), 10)
-    };
-    ui.painter().rect_filled(rect, 11.0, track);
-    if !*on {
+    let pressed = resp.is_pointer_button_down_on();
+    let track_w = 36.0;
+    let track = Rect::from_center_size(
+        Pos2::new(slot.center().x - 2.0, slot.center().y),
+        Vec2::new(track_w, 20.0),
+    );
+
+    let hover = ui.ctx().animate_bool(resp.id.with("h"), resp.hovered());
+    if *on {
         ui.painter()
-            .rect_stroke(rect, 11.0, Stroke::new(1.0_f32, line2()));
+            .rect_filled(track, 10.0, a(Color32::from_rgb(238, 239, 243), 242));
+        glow(ui.painter(), track, 10.0, white(), 0.35 + 0.25 * hover);
+    } else {
+        ui.painter()
+            .rect_filled(track, 10.0, a(white(), (13.0 + 9.0 * hover) as u8));
+        ui.painter()
+            .rect_stroke(track, 10.0, Stroke::new(1.0_f32, a(white(), 30)));
     }
-    let r = 8.0;
-    let cx = lerp(rect.left() + r + 3.0, rect.right() - r - 3.0, t);
-    let knob = if t > 0.5 { bg() } else { a(white(), 170) };
-    ui.painter().circle_filled(Pos2::new(cx, rect.center().y), r, knob);
+
+    let knob_w = if pressed { 18.0 } else { 14.0 };
+    let cx = lerp(track.left() + 3.0 + 7.0, track.right() - 3.0 - 7.0, t);
+    let knob = if t > 0.5 {
+        Color32::from_rgb(14, 14, 17)
+    } else {
+        a(white(), 235)
+    };
+    let knob_rect = Rect::from_center_size(
+        Pos2::new(cx, track.center().y),
+        Vec2::new(knob_w, 14.0),
+    );
+    ui.painter().rect_filled(knob_rect, 7.0, knob);
+    if !*on {
+        ui.painter().circle_filled(
+            Pos2::new(knob_rect.center().x, knob_rect.top() + 4.0),
+            2.0,
+            a(Color32::WHITE, 40),
+        );
+    }
+    let _ = scale;
+
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp
 }
 
-/// Horizontal slider, 0..1, drawn by hand so it stays hairline-thin.
+/// Horizontal slider, 0..1: 5 px filled track and a glowing white thumb.
 pub fn slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
-    let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(width, 20.0), Sense::click_and_drag());
-    let track = Rect::from_center_size(
-        rect.center(),
-        Vec2::new(rect.width(), 2.0),
-    );
-    ui.painter().rect_filled(track, 1.0, a(white(), 26));
+    let (slot, mut resp) = ui.allocate_exact_size(Vec2::new(width, 22.0), Sense::click_and_drag());
+    let track = Rect::from_center_size(slot.center(), Vec2::new(slot.width(), 5.0));
+    let hover = ui.ctx().animate_bool(resp.id, resp.hovered() || resp.dragged());
+
+    ui.painter().rect_filled(track, 2.5, a(white(), 28));
+    let v = value.clamp(0.0, 1.0);
     let filled = Rect::from_min_max(
         track.left_top(),
-        Pos2::new(
-            track.left() + track.width() * value.clamp(0.0, 1.0),
-            track.bottom(),
-        ),
+        Pos2::new(track.left() + track.width() * v, track.bottom()),
     );
-    ui.painter().rect_filled(filled, 1.0, a(white(), 210));
-    let cx = track.left() + track.width() * value.clamp(0.0, 1.0);
+    ui.painter().rect_filled(filled, 2.5, a(white(), 232));
+
+    let cx = track.left() + track.width() * v;
+    let c = Pos2::new(cx, slot.center().y);
+    // glow: concentric rings, brightest against the thumb
+    for (rad, alpha) in [(14.0_f32, 10.0_f32), (11.0, 16.0), (8.5, 30.0)] {
+        ui.painter()
+            .circle_filled(c, rad, a(white(), (alpha * (0.55 + 0.45 * hover)) as u8));
+    }
+    ui.painter().circle_filled(c, 7.0, a(white(), 248));
     ui.painter()
-        .circle_filled(Pos2::new(cx, rect.center().y), 5.0, white());
+        .circle_stroke(c, 7.0, Stroke::new(1.0_f32, a(Color32::BLACK, 26)));
 
     if resp.dragged() || resp.is_pointer_button_down_on() {
         if let Some(p) = resp.interact_pointer_pos() {
@@ -489,11 +672,213 @@ pub fn slider(ui: &mut Ui, value: &mut f32, width: f32) -> Response {
     }
     if resp.hovered() || resp.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        ui.ctx().request_repaint();
     }
     resp
 }
 
-/// Animated readiness ring.
+// ── the signatures ───────────────────────────────────────────────────────────
+/// The band field: a 760 px black↔white gradient sheared −32°, drifting left
+/// forever. Painted behind everything, never over text.
+pub fn bands(p: &egui::Painter, rect: Rect, now: f64) {
+    bands_scaled(p, rect, now, 1.0);
+}
+
+pub fn bands_scaled(p: &egui::Painter, rect: Rect, now: f64, scale: f32) {
+    if rect.width() < 8.0 || rect.height() < 8.0 {
+        return;
+    }
+    // Park the noise outside the deck, then only paint what can be seen.
+    let p = p.with_clip_rect(rect);
+    let period = 760.0_f32;
+    let shear = rect.height() * 0.62;
+    let step = 5.0_f32;
+    let drift = ((now as f32) * 16.0) % period;
+    let top_alpha = if light() { 22.0 } else { 26.0 } * scale;
+    let ink_col = if light() { Color32::BLACK } else { Color32::WHITE };
+
+    let mut x = -shear - step;
+    while x < rect.width() + step {
+        let u = ((x + drift) % period + period) % period / period;
+        let v = band_at(u);
+        if v > 0.01 {
+            let alpha = (v.powf(1.45) * top_alpha) as u8;
+            if alpha > 1 {
+                let x0 = rect.left() + x;
+                let x1 = x0 + step + 0.6;
+                let pts = vec![
+                    Pos2::new(x0, rect.top()),
+                    Pos2::new(x1, rect.top()),
+                    Pos2::new(x1 + shear, rect.bottom()),
+                    Pos2::new(x0 + shear, rect.bottom()),
+                ];
+                p.add(egui::Shape::convex_polygon(
+                    pts,
+                    a(ink_col, alpha),
+                    Stroke::NONE,
+                ));
+            }
+        }
+        x += step;
+    }
+}
+
+/// The 0..1 luminance of the band pattern at `u` (0..1 across one period).
+fn band_at(u: f32) -> f32 {
+    const STOPS: [(f32, f32); 17] = [
+        (0.00, 0.03),
+        (0.14, 0.04),
+        (0.22, 0.12),
+        (0.28, 0.54),
+        (0.33, 0.95),
+        (0.37, 1.00),
+        (0.42, 1.00),
+        (0.48, 0.77),
+        (0.53, 0.35),
+        (0.60, 0.05),
+        (0.68, 0.03),
+        (0.72, 0.17),
+        (0.76, 0.86),
+        (0.785, 1.00),
+        (0.82, 0.61),
+        (0.87, 0.10),
+        (0.94, 0.03),
+    ];
+    let u = u.clamp(0.0, 1.0);
+    for w in STOPS.windows(2) {
+        let (u0, v0) = w[0];
+        let (u1, v1) = w[1];
+        if u >= u0 && u <= u1 {
+            let t = if (u1 - u0).abs() < 1e-6 {
+                0.0
+            } else {
+                (u - u0) / (u1 - u0)
+            };
+            return v0 + (v1 - v0) * t;
+        }
+    }
+    STOPS[STOPS.len() - 1].1
+}
+
+/// Water standing on the glass: a lens sprite per drop — contact shadow,
+/// refracted top, bright caustic at the bottom, one specular highlight — and a
+/// few drops that slide, leaving a shrinking trail. Deterministic, no state.
+pub fn droplets(p: &egui::Painter, rect: Rect, now: f64, density: f32) {
+    if rect.width() < 40.0 || rect.height() < 40.0 || density <= 0.0 {
+        return;
+    }
+    let p = p.with_clip_rect(rect);
+    let area = rect.width() * rect.height();
+    let count = ((area / 5200.0) * density).clamp(28.0, 260.0) as usize;
+    let t = now as f32;
+    let col = if light() { Color32::BLACK } else { Color32::WHITE };
+
+    for i in 0..count {
+        let s = i as f32;
+        let h1 = hash(s * 1.37 + 11.0);
+        let h2 = hash(s * 2.71 + 5.0);
+        let h3 = hash(s * 0.53 + 23.0);
+        let r = lerp(0.9, 3.4, h3 * h3);
+        let base_x = rect.left() + h1 * rect.width();
+        let slide = h2 > 0.86;
+        let y = if slide {
+            let speed = lerp(16.0, 52.0, h3);
+            let span = rect.height() + 90.0;
+            let travel = (h2 * span + t * speed) % span;
+            rect.top() - 40.0 + travel
+        } else {
+            rect.top() + h2 * rect.height()
+        };
+        let x = base_x + if slide {
+            (t * 0.6 + h1 * 7.0).sin() * 3.0
+        } else {
+            0.0
+        };
+        if y < rect.top() - 6.0 || y > rect.bottom() + 6.0 {
+            continue;
+        }
+        let pulse = if slide {
+            1.0
+        } else {
+            0.82 + 0.18 * ((t * 0.7 + h1 * 6.28).sin() * 0.5 + 0.5)
+        };
+        lens(&p, Pos2::new(x, y), r, col, pulse);
+        if slide {
+            // the trail: three shrinking ghosts behind the drop
+            for k in 1..4 {
+                let frac = k as f32 / 4.0;
+                lens(
+                    &p,
+                    Pos2::new(x - 0.6 * k as f32, y - r * (1.6 + 2.1 * frac)),
+                    r * (0.55 - 0.10 * k as f32).max(0.3),
+                    col,
+                    0.45 - 0.08 * k as f32,
+                );
+            }
+        }
+    }
+}
+
+fn lens(p: &egui::Painter, c: Pos2, r: f32, col: Color32, k: f32) {
+    if r < 0.3 {
+        return;
+    }
+    // contact shadow, offset like a real drop standing off the surface
+    p.circle_filled(
+        Pos2::new(c.x + r * 0.16, c.y + r * 0.26),
+        r * 1.08,
+        a(Color32::BLACK, (16.0 * k) as u8),
+    );
+    // body: a lens, so the middle is clearer than the rim
+    p.circle_filled(c, r * 0.98, a(col, (10.0 * k) as u8));
+    p.circle_filled(c, r * 0.72, a(col, (8.0 * k) as u8));
+    // refracted dark on top, caustic light at the bottom
+    p.circle_filled(
+        Pos2::new(c.x, c.y - r * 0.34),
+        r * 0.52,
+        a(Color32::BLACK, (10.0 * k) as u8),
+    );
+    p.circle_filled(
+        Pos2::new(c.x, c.y + r * 0.42),
+        r * 0.40,
+        a(col, (26.0 * k) as u8),
+    );
+    p.circle_stroke(c, r * 0.98, Stroke::new(1.0_f32, a(col, (26.0 * k) as u8)));
+    // specular
+    p.circle_filled(
+        Pos2::new(c.x - r * 0.32, c.y - r * 0.38),
+        (r * 0.17).max(0.6),
+        a(Color32::WHITE, (150.0 * k) as u8),
+    );
+}
+
+fn hash(n: f32) -> f32 {
+    let x = (n * 12.9898).sin() * 43758.5453;
+    x.fract().abs()
+}
+
+/// The brand mark, drawn as vectors: a hexagon with the three crossing cuts.
+pub fn mark(p: &egui::Painter, rect: Rect, color: Color32) {
+    let c = rect.center();
+    let r = rect.width().min(rect.height()) * 0.5;
+    let pts: Vec<Pos2> = (0..6)
+        .map(|i| {
+            let ang = -std::f32::consts::FRAC_PI_2
+                + i as f32 * std::f32::consts::TAU / 6.0;
+            Pos2::new(c.x + r * ang.cos(), c.y + r * ang.sin())
+        })
+        .collect();
+    let mut outline = pts.clone();
+    outline.push(pts[0]);
+    p.add(egui::Shape::line(outline, Stroke::new(1.6_f32, color)));
+    let faint = a(color, 110);
+    for (i, j) in [(0usize, 3usize), (1, 4), (2, 5)] {
+        p.line_segment([pts[i], pts[j]], Stroke::new(1.0_f32, faint));
+    }
+}
+
+// ── data display ─────────────────────────────────────────────────────────────
+/// Animated readiness ring, mint once it is actually done.
 pub fn ring(ui: &mut Ui, pct: f32, size: f32, caption: &str) {
     ring_sweep(ui, pct, size, caption, 1.0)
 }
@@ -504,8 +889,11 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
     let c = rect.center();
     let r = size * 0.5 - 10.0;
     let p = ui.painter();
-    p.circle_stroke(c, r, Stroke::new(1.0_f32, line()));
+    p.circle_stroke(c, r, Stroke::new(1.0_f32, a(white(), 30)));
+    p.circle_filled(c, r - 1.0, a(white(), if light() { 10 } else { 5 }));
 
+    let done = pct >= 99.9;
+    let arc_col = if done { mint() } else { a(white(), 235) };
     let arc = (pct.clamp(0.0, 100.0) / 100.0) * std::f32::consts::TAU;
     let steps = 96;
     let mut prev: Option<Pos2> = None;
@@ -517,9 +905,15 @@ pub fn ring_sweep(ui: &mut Ui, pct: f32, size: f32, caption: &str, sweep: f32) {
         let ang = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::TAU;
         let pt = Pos2::new(c.x + r * ang.cos(), c.y + r * ang.sin());
         if let Some(q) = prev {
-            p.line_segment([q, pt], Stroke::new(2.0_f32, a(white(), 230)));
+            p.line_segment([q, pt], Stroke::new(2.0_f32, arc_col));
         }
         prev = Some(pt);
+    }
+    if done {
+        // a completed ring carries its own light
+        for (grow, alpha) in [(2.0_f32, 26u8), (5.0, 12)] {
+            p.circle_stroke(c, r + grow, Stroke::new(1.0_f32, a(mint(), alpha)));
+        }
     }
     p.text(
         c,
@@ -577,10 +971,10 @@ pub fn spark(ui: &mut Ui, values: &[f32], size: Vec2, max: f32) {
         poly.push(Pos2::new(rect.right(), rect.bottom()));
         poly.push(Pos2::new(rect.left(), rect.bottom()));
         ui.painter()
-            .add(egui::Shape::convex_polygon(poly, a(white(), 9), Stroke::NONE));
+            .add(egui::Shape::convex_polygon(poly, a(white(), 10), Stroke::NONE));
     }
     ui.painter()
-        .add(egui::Shape::line(pts, Stroke::new(1.2_f32, a(white(), 210))));
+        .add(egui::Shape::line(pts, Stroke::new(1.4_f32, a(white(), 220))));
 }
 
 /// Big number + caption block.
@@ -632,4 +1026,41 @@ pub fn sub(ui: &mut Ui, text: &str) {
     ui.add(egui::Label::new(
         RichText::new(text).font(body_font()).color(faint()),
     ));
+}
+
+// ── the cursor ───────────────────────────────────────────────────────────────
+/// A white dot with a ring that lags behind. The OS cursor is hidden by the
+/// app while this is on, so the pointer you see is the one VOID draws.
+pub fn cursor_overlay(ctx: &egui::Context, now: f64) {
+    let Some(pos) = ctx.pointer_latest_pos() else {
+        return;
+    };
+    let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("void.cursor"));
+    let p = ctx.layer_painter(layer);
+    let down = ctx.input(|i| i.pointer.any_down());
+    let t = now as f32;
+    // the ring breathes while the button is held, and settles when released
+    let r = if down { 11.0 } else { 17.0 + (t * 2.2).sin() * 0.6 };
+    let halo = if down { 40.0 } else { 18.0 };
+
+    p.circle_filled(pos, r, a(Color32::WHITE, halo as u8));
+    p.circle_stroke(pos, r, Stroke::new(1.5_f32, a(Color32::WHITE, 232)));
+    p.circle_filled(pos, 3.0, Color32::WHITE);
+}
+
+/// Draw a rounded glass tile with the brand mark inside — the app icon, drawn.
+pub fn brand_tile(p: &egui::Painter, rect: Rect, strength: f32) {
+    p.rect_filled(rect, 10.0, a(white(), 8));
+    p.rect_stroke(rect, 10.0, Stroke::new(1.0_f32, a(white(), 30)));
+    p.line_segment(
+        [
+            Pos2::new(rect.left() + 10.0, rect.top() + 0.6),
+            Pos2::new(rect.right() - 10.0, rect.top() + 0.6),
+        ],
+        Stroke::new(1.0_f32, a(Color32::WHITE, 44)),
+    );
+    mark(p, rect.shrink(rect.width() * 0.24), a(Color32::WHITE, 236));
+    if strength > 0.01 {
+        glow(p, rect, 10.0, Color32::WHITE, strength);
+    }
 }

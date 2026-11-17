@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.7.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
+`v0.8.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -78,6 +78,25 @@ documented way back.
 | **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
+
+### What's new in 0.8.0 — Monochrome Glass
+
+The whole app was rebuilt in one design language, ported to native drawing (no webview, no
+HTML, still a single 4.4 MB exe).
+
+* **A drifting band field.** A 760 px black↔white gradient sheared −32° runs behind the deck,
+  drawn as ~600 slanted strips at 26-alpha, so cards sit on light that is always moving.
+* **Water on the glass.** Real lens sprites: contact shadow, refracted dark top, a bright
+  caustic at the bottom and one specular highlight; a few drops slide and leave a shrinking
+  trail. Deterministic, no state, still clipped behind the cards.
+* **Glass surfaces.** Every card is translucent ink with a 1 px white rim, a top highlight and
+  a spotlight that follows the pointer; panels are glass, the rail is a plane behind them.
+* **Answers are soft.** Buttons lift a pixel, glow, and a light sweep crosses the primary face;
+  toggles spring (36×20, light track, ink knob); sliders have a 5 px fill and a glowing thumb.
+* **New in Settings:** a sliding **segmented** theme control, plus *Wallpaper* and *Soft cursor*
+  toggles — the pointer is now VOID's own white dot with a lagging ring (the OS cursor is
+  hidden while it is on), and the rail carries the brand mark drawn as vectors.
+* Colour is meaning, never decoration: mint for done, amber for careful, rose for broke.
 
 ### What's new in 0.7.0
 
