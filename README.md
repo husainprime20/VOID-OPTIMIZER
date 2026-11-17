@@ -49,7 +49,7 @@ Rendered from the real binary, head-lessly, by CI on every push (branch `void-pr
 | ![profiles](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/profiles.png) | ![free fire](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/freefire.png) |
 | ![network](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/network.png) | ![monitor](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/monitor.png) |
 | ![aim lab](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/aim.png) | ![settings](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/settings.png) |
-| ![porcelain](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/dashboard-light.png) | ![monitor](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/monitor.png) |
+| ![porcelain](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/dashboard-light.png) | ![porcelain settings](https://raw.githubusercontent.com/husainprime20/VOID-OPTIMIZER/void-preview/docs/shots/settings-light.png) |
 
 ## What VOID is
 
@@ -78,6 +78,18 @@ documented way back.
 | **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
+
+### What's new in 0.8.4 — Porcelain
+
+* **The light theme is a real theme now**, not the dark one inverted. The page sits at
+  `#e9e9ed` so glass has depth to sit on, cards keep their translucency, and the contour is
+  drawn in ink (96 alpha) instead of white — an edge you can see on a bright panel.
+* **Contours are one function.** `theme::rim()` decides white-or-ink from the mode, so the
+  card body, the hover lift and every switch share the same hairline.
+* **Switches stopped lying.** An off switch is a dim grey knob in an outlined track; only an
+  on switch is a filled white slab. Previously both states carried a white knob.
+* The preview pipeline also renders **Settings in Porcelain**, and the README finally points
+  at it instead of showing Monitor twice.
 
 ### What's new in 0.8.0 — Monochrome Glass
 

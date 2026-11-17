@@ -56,7 +56,7 @@ fn pick(dark: (u8, u8, u8), pale: (u8, u8, u8)) -> Color32 {
 
 /// Window.
 pub fn bg() -> Color32 {
-    pick((8, 8, 10), (244, 244, 246))
+    pick((8, 8, 10), (233, 233, 237))
 }
 /// Card. Kept opaque for anything that must sit on its own (popups, tooltips).
 pub fn ink() -> Color32 {
@@ -64,7 +64,7 @@ pub fn ink() -> Color32 {
 }
 /// Raised surface.
 pub fn ink2() -> Color32 {
-    pick((17, 17, 20), (236, 236, 239))
+    pick((17, 17, 20), (226, 226, 231))
 }
 /// Primary text.
 pub fn txt() -> Color32 {
@@ -84,11 +84,11 @@ pub fn ghost() -> Color32 {
 }
 /// Rail surface. A plane just behind the deck, so navigation reads as its own layer.
 pub fn rail_bg() -> Color32 {
-    pick((6, 6, 8), (236, 236, 234))
+    pick((6, 6, 8), (224, 224, 229))
 }
 /// Hairline.
 pub fn line() -> Color32 {
-    pick((30, 30, 35), (222, 222, 218))
+    pick((30, 30, 35), (212, 212, 218))
 }
 /// Stronger divider / hover rim.
 pub fn line2() -> Color32 {
@@ -361,8 +361,8 @@ pub fn split_hairline(ui: &mut Ui, inset: f32) {
 /// The glass recipe: translucent ink, 1 px white rim, 1 px top highlight.
 pub fn glass_frame(pad: f32, rounding: f32) -> egui::Frame {
     egui::Frame::none()
-        .fill(glass(if light() { 236 } else { 222 }))
-        .stroke(Stroke::new(1.0_f32, a(white(), 34)))
+        .fill(glass(if light() { 224 } else { 222 }))
+        .stroke(Stroke::new(1.0_f32, rim()))
         .rounding(rounding)
         .inner_margin(egui::Margin::same(pad))
 }
@@ -376,7 +376,7 @@ fn top_highlight(p: &egui::Painter, r: Rect, rounding: f32) {
         Stroke::new(
             1.0_f32,
             if light() {
-                a(Color32::BLACK, 10)
+                a(Color32::BLACK, 26)
             } else {
                 a(Color32::WHITE, 54)
             },
@@ -415,11 +415,13 @@ pub fn card_styled<R>(
     // hover: the rim brightens — the whole answer, no colour change
     let t = ui.ctx().animate_bool(out.response.id, out.response.hovered());
     if t > 0.01 {
-        ui.painter().rect_stroke(
-            r,
-            rounding,
-            Stroke::new(1.0_f32, a(white(), (34.0 + 40.0 * t) as u8)),
-        );
+        let hot = if light() {
+            a(ink_light(), (96.0 + 70.0 * t) as u8)
+        } else {
+            a(white(), (34.0 + 40.0 * t) as u8)
+        };
+        ui.painter()
+            .rect_stroke(r, rounding, Stroke::new(1.0_f32, hot));
     }
     spotlight(ui, r, rounding);
     out.inner
@@ -641,7 +643,7 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
         ui.painter()
             .rect_filled(track, 10.0, a(white(), (13.0 + 9.0 * hover) as u8));
         ui.painter()
-            .rect_stroke(track, 10.0, Stroke::new(1.0_f32, a(white(), 30)));
+            .rect_stroke(track, 10.0, Stroke::new(1.0_f32, rim()));
     }
 
     let knob_w = if pressed { 18.0 } else { 14.0 };
@@ -649,7 +651,7 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
     let knob = if t > 0.5 {
         Color32::from_rgb(14, 14, 17)
     } else {
-        a(white(), 235)
+        a(ink_light(), (150.0 + 60.0 * hover) as u8)
     };
     let knob_rect = Rect::from_center_size(
         Pos2::new(cx, track.center().y),
@@ -1099,6 +1101,15 @@ pub fn brand_tile(p: &egui::Painter, rect: Rect, strength: f32) {
     mark(p, rect.shrink(rect.width() * 0.24), over(ink, 236));
     if strength > 0.01 {
         glow(p, rect, 10.0, ink, strength);
+    }
+}
+
+/// A 1 px contour: white in Obsidian, ink in Porcelain.
+pub fn rim() -> Color32 {
+    if light() {
+        a(ink_light(), 96)
+    } else {
+        a(white(), 34)
     }
 }
 
