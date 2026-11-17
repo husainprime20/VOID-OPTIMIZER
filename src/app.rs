@@ -1908,7 +1908,7 @@ impl eframe::App for App {
                 );
                 ui.ctx()
                     .layer_painter(ui.layer_id())
-                    .rect_filled(edge, 0.0, theme::a(theme::white(), 26));
+                    .rect_filled(edge, 0.0, theme::over(theme::ink_light(), 18));
                 self.rail(ui, now);
             });
 

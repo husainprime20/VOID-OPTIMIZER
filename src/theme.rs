@@ -373,7 +373,14 @@ fn top_highlight(p: &egui::Painter, r: Rect, rounding: f32) {
             Pos2::new(r.left() + rounding, r.top() + 0.5),
             Pos2::new(r.right() - rounding, r.top() + 0.5),
         ],
-        Stroke::new(1.0_f32, a(white(), if light() { 210 } else { 54 })),
+        Stroke::new(
+            1.0_f32,
+            if light() {
+                a(Color32::BLACK, 10)
+            } else {
+                a(Color32::WHITE, 54)
+            },
+        ),
     );
 }
 
@@ -1071,24 +1078,35 @@ pub fn cursor_overlay(ctx: &egui::Context, now: f64) {
     let r = if down { 11.0 } else { 17.0 + (t * 2.2).sin() * 0.6 };
     let halo = if down { 40.0 } else { 18.0 };
 
-    p.circle_filled(pos, r, a(Color32::WHITE, halo as u8));
-    p.circle_stroke(pos, r, Stroke::new(1.5_f32, a(Color32::WHITE, 232)));
-    p.circle_filled(pos, 3.0, Color32::WHITE);
+    let ink = ink_light();
+    p.circle_filled(pos, r, over(ink, halo as u8));
+    p.circle_stroke(pos, r, Stroke::new(1.5_f32, over(ink, 232)));
+    p.circle_filled(pos, 3.0, ink);
 }
 
 /// Draw a rounded glass tile with the brand mark inside — the app icon, drawn.
 pub fn brand_tile(p: &egui::Painter, rect: Rect, strength: f32) {
-    p.rect_filled(rect, 10.0, a(white(), 8));
-    p.rect_stroke(rect, 10.0, Stroke::new(1.0_f32, a(white(), 30)));
+    let ink = ink_light();
+    p.rect_filled(rect, 10.0, over(ink, 10));
+    p.rect_stroke(rect, 10.0, Stroke::new(1.0_f32, over(ink, 34)));
     p.line_segment(
         [
             Pos2::new(rect.left() + 10.0, rect.top() + 0.6),
             Pos2::new(rect.right() - 10.0, rect.top() + 0.6),
         ],
-        Stroke::new(1.0_f32, a(Color32::WHITE, 44)),
+        Stroke::new(1.0_f32, over(ink, 30)),
     );
-    mark(p, rect.shrink(rect.width() * 0.24), a(Color32::WHITE, 236));
+    mark(p, rect.shrink(rect.width() * 0.24), over(ink, 236));
     if strength > 0.01 {
-        glow(p, rect, 10.0, Color32::WHITE, strength);
+        glow(p, rect, 10.0, ink, strength);
+    }
+}
+
+/// The light that draws *on* the surface: white in Obsidian, ink in Porcelain.
+pub fn ink_light() -> Color32 {
+    if light() {
+        Color32::from_rgb(20, 20, 24)
+    } else {
+        Color32::WHITE
     }
 }
