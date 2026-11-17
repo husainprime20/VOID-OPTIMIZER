@@ -361,8 +361,8 @@ pub fn split_hairline(ui: &mut Ui, inset: f32) {
 /// The glass recipe: translucent ink, 1 px white rim, 1 px top highlight.
 pub fn glass_frame(pad: f32, rounding: f32) -> egui::Frame {
     egui::Frame::none()
-        .fill(glass(if light() { 232 } else { 214 }))
-        .stroke(Stroke::new(1.0_f32, a(white(), 26)))
+        .fill(glass(if light() { 236 } else { 222 }))
+        .stroke(Stroke::new(1.0_f32, a(white(), 34)))
         .rounding(rounding)
         .inner_margin(egui::Margin::same(pad))
 }
@@ -373,7 +373,7 @@ fn top_highlight(p: &egui::Painter, r: Rect, rounding: f32) {
             Pos2::new(r.left() + rounding, r.top() + 0.5),
             Pos2::new(r.right() - rounding, r.top() + 0.5),
         ],
-        Stroke::new(1.0_f32, a(white(), if light() { 200 } else { 40 })),
+        Stroke::new(1.0_f32, a(white(), if light() { 210 } else { 54 })),
     );
 }
 
@@ -411,7 +411,7 @@ pub fn card_styled<R>(
         ui.painter().rect_stroke(
             r,
             rounding,
-            Stroke::new(1.0_f32, a(white(), (26.0 + 34.0 * t) as u8)),
+            Stroke::new(1.0_f32, a(white(), (34.0 + 40.0 * t) as u8)),
         );
     }
     spotlight(ui, r, rounding);
@@ -722,7 +722,7 @@ pub fn bands_scaled(p: &egui::Painter, rect: Rect, now: f64, scale: f32) {
     let shear = rect.height() * 0.62;
     let step = 5.0_f32;
     let drift = ((now as f32) * 16.0) % period;
-    let top_alpha = if light() { 22.0 } else { 26.0 } * scale;
+    let top_alpha = if light() { 34.0 } else { 42.0 } * scale;
     let ink_col = if light() { Color32::BLACK } else { Color32::WHITE };
 
     let mut x = -shear - step;
