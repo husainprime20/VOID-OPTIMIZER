@@ -87,6 +87,9 @@ impl View {
     }
 }
 
+/// The Discord application id, re-exported for the settings card.
+pub const RPC_CLIENT_ID: &str = crate::rpc::CLIENT_ID;
+
 #[derive(Clone)]
 pub enum Action {
     None,
@@ -213,6 +216,8 @@ pub struct App {
     pub checks_at: f64,
     /// Guard tick: re-asserts drifted tweaks.
     pub guard_at: f64,
+    /// Last profile auto-armed, so a running game is only handled once.
+    pub last_auto: String,
     /// Command palette.
     pub palette: bool,
     pub palette_q: String,
@@ -311,6 +316,7 @@ impl App {
             checks: Vec::new(),
             checks_at: -10.0,
             guard_at: 0.0,
+            last_auto: String::new(),
             palette: false,
             palette_q: String::new(),
             thieves: Vec::new(),
@@ -668,6 +674,33 @@ impl App {
         if self.view == View::Dashboard && now - self.games_at > 6.0 {
             self.games_at = now;
             self.games = engine::running_games();
+            // auto-switch: the moment a recognised title appears, arm its set
+            if self.state.auto_switch && !self.busy() {
+                if let Some(profile) = self
+                    .games
+                    .iter()
+                    .map(|(_, p)| *p)
+                    .find(|p| *p != "stream")
+                {
+                    if self.last_auto != profile {
+                        self.last_auto = profile.to_string();
+                        let ids: Vec<String> = engine::catalog::PROFILES
+                            .iter()
+                            .find(|p| p.id == profile)
+                            .map(|p| p.tweaks.iter().map(|s| s.to_string()).collect())
+                            .unwrap_or_default();
+                        let missing: Vec<String> = ids
+                            .into_iter()
+                            .filter(|id| !self.state.applied.contains(id))
+                            .collect();
+                        if !missing.is_empty() {
+                            self.toast(0, format!("auto · arming {}", profile));
+                            let c = ctx.clone();
+                            self.apply_set(&c, missing);
+                        }
+                    }
+                }
+            }
         }
         if self.view == View::Monitor && now - self.cpu_prev_at > 2.0 {
             let elapsed = (now - self.cpu_prev_at).clamp(1.0, 6.0);
@@ -731,6 +764,46 @@ impl App {
     }
 
     // ── chrome ──────────────────────────────────────────────────────────────
+    /// Rain, painted inside the panel that calls it: behind the cards, visible
+    /// in the gutters, clipped by the panel. Deterministic per drop, no state.
+    fn paint_rain(&self, ui: &Ui, now: f64) {
+        self.paint_rain_scaled(ui, now, 1.0)
+    }
+
+    fn paint_rain_scaled(&self, ui: &Ui, now: f64, scale: f32) {
+        if !self.state.motion || !self.state.rain {
+            return;
+        }
+        let rect = ui.max_rect();
+        let p = ui.painter().with_clip_rect(rect);
+        let t = now as f32;
+        for band in 0..3 {
+            let count = (([34, 22, 13][band] as f32) * scale) as usize;
+            let speed = [900.0, 560.0, 320.0][band];
+            let length = [24.0, 38.0, 56.0][band];
+            let alpha = [14.0, 22.0, 30.0][band];
+            let width = [0.7, 0.9, 1.1][band];
+            for i in 0..count {
+                let seed = (band as f32 + 1.0) * 97.0 + i as f32 * 13.7;
+                let x = ((seed * 7919.0).sin().fract().abs()) * rect.width();
+                let phase = (seed * 3571.0).cos().fract().abs();
+                let span = rect.height() + length * 2.0;
+                let travel = (t * speed * (0.85 + phase * 0.3) + phase * 1600.0) % span;
+                let y = travel - length;
+                let drift = (travel * 0.02).sin() * 5.0;
+                let edge = ((travel / 90.0).min(1.0) * ((span - travel) / 120.0).min(1.0))
+                    .clamp(0.0, 1.0);
+                p.line_segment(
+                    [
+                        Pos2::new(rect.left() + x + drift, rect.top() + y),
+                        Pos2::new(rect.left() + x + drift - 2.0, rect.top() + y + length),
+                    ],
+                    Stroke::new(width, a(white(), (alpha * edge) as u8)),
+                );
+            }
+        }
+    }
+
     fn rail(&mut self, ui: &mut Ui, now: f64) {
         ui.add_space(4.0);
         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::hover());
@@ -770,7 +843,9 @@ impl App {
 
         ui.add_space(14.0);
         theme::hairline(ui);
-        ui.add_space(12.0);
+        ui.add_space(10.0);
+        theme::micro(ui, "workspace");
+        ui.add_space(6.0);
 
         for (i, v) in VIEWS.iter().enumerate() {
             if self.nav_item(ui, *v, i + 1, now) {
@@ -796,6 +871,8 @@ impl App {
         theme::hairline(ui);
         ui.add_space(12.0);
 
+        theme::micro(ui, "signal");
+        ui.add_space(8.0);
         let playing = self.audio.playing;
         ui.horizontal(|ui| {
             let mut p = playing;
@@ -1086,6 +1163,69 @@ impl App {
             let ctx = ui.ctx().clone();
             self.run_action(&ctx, Action::Theme(next));
         }
+    }
+
+    /// The bottom rail of an application window: build, live state and clock.
+    fn status_bar(&mut self, ui: &mut Ui) {
+        let (rect, _) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), ui.available_height()),
+            Sense::hover(),
+        );
+        let y = rect.center().y;
+        let p = ui.painter();
+
+        let left = Pos2::new(rect.left(), y);
+        p.text(
+            left,
+            Align2::LEFT_CENTER,
+            format!("VOID {}", engine::VERSION),
+            mono_font(9.5),
+            faint(),
+        );
+        let mut x = rect.left() + 86.0;
+        let dot = |p: &egui::Painter, x: f32, lit: bool, label: &str, col: Color32| {
+            p.circle_filled(Pos2::new(x, y), 2.5, if lit { white() } else { a(white(), 60) });
+            p.text(
+                Pos2::new(x + 8.0, y),
+                Align2::LEFT_CENTER,
+                tracked(label),
+                micro_font(),
+                col,
+            );
+            x + 20.0 + label.chars().count() as f32 * 6.4
+        };
+
+        let who = self.rpc.who();
+        x = dot(p, x, self.rpc.connected(), "discord", if self.rpc.connected() { dim() } else { ghost() });
+        if !who.name.is_empty() {
+            p.text(
+                Pos2::new(x, y),
+                Align2::LEFT_CENTER,
+                theme::clip(&who.name, 18),
+                mono_font(9.5),
+                faint(),
+            );
+            x += 90.0;
+        }
+        x = dot(p, x + 6.0, self.state.guard, "guard", ghost());
+        if self.state.guard {
+            p.text(
+                Pos2::new(x, y),
+                Align2::LEFT_CENTER,
+                format!("{} edits watched", self.state.applied.len()),
+                mono_font(9.5),
+                ghost(),
+            );
+        }
+
+        let (score, _) = self.score();
+        p.text(
+            Pos2::new(rect.right(), y),
+            Align2::RIGHT_CENTER,
+            format!("{:03}/100 · {}", score, self.clock),
+            mono_font(9.5),
+            faint(),
+        );
     }
 
     fn job_strip(&mut self, ui: &mut Ui) {
@@ -1606,7 +1746,7 @@ impl eframe::App for App {
         self.guard_tick(ctx, now);
         self.checks_tick(now);
 
-        // dust: slow specks behind everything, disabled with reduced motion
+        // dust + rain: the ambient layer, disabled with reduced motion or rain off
         if self.state.motion {
             let screen = ctx.screen_rect();
             egui::Area::new(egui::Id::new("void.dust"))
@@ -1615,6 +1755,7 @@ impl eframe::App for App {
                 .interactable(false)
                 .show(ctx, |ui| {
                     let p = ui.painter();
+
                     for i in 0..40 {
                         let seed = i as f32 * 12.9898;
                         let x = ((seed.sin() * 43758.5453).fract().abs() * screen.width()
@@ -1642,6 +1783,8 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(18.0, 18.0)),
             )
             .show(ctx, |ui| {
+                // the rail carries a thinner field, so the nav stays legible
+                self.paint_rain_scaled(ui, now, 0.45);
                 self.rail(ui, now);
             });
 
@@ -1671,6 +1814,17 @@ impl eframe::App for App {
                 });
         }
 
+        egui::TopBottomPanel::bottom("void.status")
+            .exact_height(27.0)
+            .frame(
+                egui::Frame::none()
+                    .fill(theme::rail_bg())
+                    .inner_margin(egui::Margin::symmetric(18.0, 5.0)),
+            )
+            .show(ctx, |ui| {
+                self.status_bar(ui);
+            });
+
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::none()
@@ -1678,6 +1832,7 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(30.0, 20.0)),
             )
             .show(ctx, |ui| {
+                self.paint_rain(ui, now);
                 // wipe on view change: a hairline that sweeps across the top
                 let age = (now - self.view_at) as f32;
                 if age < 0.45 {

@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.5.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
+`v0.6.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -78,6 +78,25 @@ documented way back.
 | **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
+
+### What's new in 0.6.0
+
+* **A mark.** `docs/branding/VOID-icon-512.png` is the brand: a single broken ring around a
+  still point, 512×512 with alpha, ready to drop into the Discord developer portal as a Rich
+  Presence asset. The same geometry ships inside the app — the window/taskbar icon is
+  embedded as raw RGBA (`assets/icon64.rgba`, no image decoder linked) and `assets/void.ico`
+  is compiled into `VOID.exe` with a version block by `build.rs`.
+* **Rain.** Three parallax bands of streaks fall behind the deck — fixed geometry per drop,
+  cosine drift, edge fade, no allocations. Toggleable, and it respects reduced motion.
+* **Discord link.** The RPC client gained a reply thread, so VOID can ask the Discord client
+  `GET_CURRENT_USER` and show **who is signed in**: your tag lands in the status bar and in a
+  new Discord card (connection state, account, client id with copy, reconnect). No SDK, no
+  OAuth secret in the binary — the app authorises once inside Discord.
+* **Status bar.** A real application rail: build, discord, account, guard and live score.
+* **Auto-loadout.** With it on, VOID watches the process table and arms a title's tuning set
+  the moment the game launches — once per title, never mid-job.
+* **Surface depth.** Cards carry a one-pixel top highlight, the rail gained section labels,
+  and the section heads read like a product, not a settings page.
 
 ### What's new in 0.5.0
 

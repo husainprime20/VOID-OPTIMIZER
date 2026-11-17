@@ -1,6 +1,6 @@
 [package]
 name = "void-optimizer"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "VOID // a luxury-grade competitive gaming optimizer"
 license = "MIT"
@@ -15,6 +15,10 @@ path = "src/gui.rs"
 [[bin]]
 name = "void-cli"
 path = "src/cli.rs"
+
+[target.'cfg(windows)'.build-dependencies]
+# Writes the icon + version block into VOID.exe. Best-effort (see build.rs).
+winres = "0.1"
 
 [dependencies]
 # UI: immediate-mode, GPU-drawn (OpenGL 3.3 — runs on a GT 730). Default features

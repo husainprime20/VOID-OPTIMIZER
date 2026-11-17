@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.5.0";
+pub const VERSION: &str = "0.6.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -70,6 +70,10 @@ pub struct State {
     pub presence: bool,
     /// Self-healing: re-assert applied tweaks that drift.
     pub guard: bool,
+    /// Ambient rain layer.
+    pub rain: bool,
+    /// Apply a title's profile automatically when it launches.
+    pub auto_switch: bool,
 }
 
 pub struct Outcome {
@@ -106,6 +110,8 @@ impl State {
             theme: 0,
             presence: true,
             guard: true,
+            rain: true,
+            auto_switch: false,
         };
         s.load();
         s.push(
@@ -158,6 +164,8 @@ impl State {
                     "theme" => self.theme = v.parse::<u8>().unwrap_or(0).min(1),
                     "presence" => self.presence = truthy(v),
                     "guard" => self.guard = truthy(v),
+                    "rain" => self.rain = truthy(v),
+                    "auto_switch" => self.auto_switch = truthy(v),
                     "applied" => {
                         self.applied = v
                             .split(',')
@@ -173,7 +181,7 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\napplied={}\n",
+            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nauto_switch={}\napplied={}\n",
             self.volume,
             self.intensity,
             if self.muted { 1 } else { 0 },
@@ -183,6 +191,8 @@ impl State {
             self.theme,
             if self.presence { 1 } else { 0 },
             if self.guard { 1 } else { 0 },
+            if self.rain { 1 } else { 0 },
+            if self.auto_switch { 1 } else { 0 },
             self.applied.iter().cloned().collect::<Vec<String>>().join(",")
         );
         let _ = fs::write(settings_path(), body);
@@ -207,6 +217,8 @@ impl State {
             }
             "presence" => self.presence = truthy(value),
             "guard" => self.guard = truthy(value),
+            "rain" => self.rain = truthy(value),
+            "auto_switch" => self.auto_switch = truthy(value),
             "muted" => self.muted = truthy(value),
             "motion" => self.motion = truthy(value),
             "auto_backup" => self.auto_backup = truthy(value),

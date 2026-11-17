@@ -1,16 +1,18 @@
-// VOID — Discord rich presence.
+// VOID — Discord rich presence + local account link.
 //
 // Discord's local RPC is a named pipe (`\\.\pipe\discord-ipc-N`) carrying framed
 // JSON: an i32 opcode, an i32 little-endian length, then the payload. There is
 // no SDK here and no dependency — just `CreateFileW` through `std::fs`, so the
 // feature costs a few kilobytes instead of a second runtime.
 //
-// Everything runs on one background thread. The UI only ever posts a presence
-// message into a channel; if Discord is closed, the thread quietly retries and
-// the app never notices.
+// One writer thread owns the requests; a second thread drains replies, because a
+// pipe read blocks and must never stall presence updates. Everything the UI does
+// is either a channel send or an atomic load.
 
-use std::io::Write;
-use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
+use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// The VOID application id registered with Discord.
@@ -29,85 +31,180 @@ pub struct Presence {
     pub mood: String,
 }
 
+#[derive(Clone)]
+enum Cmd {
+    Set(Presence),
+    /// Ask Discord who is signed in on this machine.
+    WhoAmI,
+    /// Drop the connection and reconnect on the next tick.
+    Reconnect,
+}
+
+/// What Discord told us about the signed-in account.
+#[derive(Clone, Default)]
+pub struct Who {
+    pub name: String,
+    pub id: String,
+    /// Set when Discord answered with an error (usually "not authorized").
+    pub error: Option<String>,
+}
+
 /// Handle held by the app. Dropping it closes the worker.
 pub struct Rpc {
-    tx: Option<Sender<Presence>>,
-    connected: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    tx: Option<Sender<Cmd>>,
+    connected: Arc<AtomicBool>,
+    who: Arc<Mutex<Who>>,
 }
 
 impl Rpc {
     /// Start the worker. `enabled == false` gives a handle that does nothing, so
     /// call sites never need to branch.
     pub fn start(enabled: bool) -> Rpc {
-        let connected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let connected = Arc::new(AtomicBool::new(false));
+        let who = Arc::new(Mutex::new(Who::default()));
         if !enabled {
-            return Rpc { tx: None, connected };
+            return Rpc {
+                tx: None,
+                connected,
+                who,
+            };
         }
-        let (tx, rx) = channel::<Presence>();
+        let (tx, rx) = channel::<Cmd>();
         let flag = connected.clone();
+        let w = who.clone();
         std::thread::Builder::new()
             .name("void-rpc".into())
-            .spawn(move || worker(rx, flag))
+            .spawn(move || worker(rx, flag, w))
             .ok();
-        Rpc { tx: Some(tx), connected }
+        Rpc {
+            tx: Some(tx),
+            connected,
+            who,
+        }
     }
 
     pub fn connected(&self) -> bool {
-        self.connected.load(std::sync::atomic::Ordering::Relaxed)
+        self.connected.load(Ordering::Relaxed)
+    }
+
+    /// The signed-in Discord account, once the client has answered.
+    pub fn who(&self) -> Who {
+        self.who.lock().map(|w| w.clone()).unwrap_or_default()
+    }
+
+    /// Ask the client for the account again (also used as "retry link").
+    pub fn refresh_user(&self) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Cmd::WhoAmI);
+        }
+    }
+
+    pub fn reconnect(&self) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Cmd::Reconnect);
+        }
     }
 
     /// Post a new presence. Cheap, non-blocking, safe to call every frame.
     pub fn set(&self, p: Presence) {
         if let Some(tx) = &self.tx {
-            let _ = tx.send(p);
+            let _ = tx.send(Cmd::Set(p));
         }
     }
 }
 
 // ── worker ───────────────────────────────────────────────────────────────────
 
-fn worker(rx: Receiver<Presence>, connected: std::sync::Arc<std::sync::atomic::AtomicBool>) {
-    let mut pipe: Option<Pipe> = None;
+struct Conn {
+    pipe: Pipe,
+    replies: Receiver<String>,
+}
+
+fn worker(rx: Receiver<Cmd>, connected: Arc<AtomicBool>, who: Arc<Mutex<Who>>) {
+    let mut conn: Option<Conn> = None;
     let mut last: Option<Presence> = None;
+    let mut dirty = false;
+    let mut want_user = true;
+    let mut last_try = std::time::Instant::now() - Duration::from_secs(60);
 
     loop {
-        // Wait for a message, but wake up regularly so a late-starting Discord
-        // can be picked up without the user touching anything.
-        let incoming = match rx.recv_timeout(Duration::from_secs(4)) {
-            Ok(p) => Some(p),
+        let cmd = match rx.recv_timeout(Duration::from_millis(1500)) {
+            Ok(c) => Some(c),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         };
 
-        if let Some(p) = incoming {
-            // Skip identical frames; Discord rate-limits SET_ACTIVITY to 5/20 s.
-            if last.as_ref().map(|l| same(l, &p)).unwrap_or(false) && pipe.is_some() {
-                continue;
+        let mut force = false;
+        match cmd {
+            Some(Cmd::Set(p)) => {
+                if last.as_ref().map(|l| !same(l, &p)).unwrap_or(true) {
+                    last = Some(p);
+                    dirty = true;
+                }
             }
-            last = Some(p);
+            Some(Cmd::WhoAmI) => {
+                want_user = true;
+                force = true;
+            }
+            Some(Cmd::Reconnect) => {
+                conn = None;
+                connected.store(false, Ordering::Relaxed);
+                want_user = true;
+                dirty = last.is_some();
+                force = true;
+            }
+            None => {}
         }
 
-        let Some(p) = last.clone() else { continue };
+        // connect / retry (never more than once every three seconds)
+        if conn.is_none() && (force || last.is_some()) && last_try.elapsed() > Duration::from_secs(3)
+        {
+            last_try = std::time::Instant::now();
+            if let Some(p) = Pipe::connect() {
+                let replies = p.spawn_reader();
+                conn = Some(Conn { pipe: p, replies });
+                connected.store(true, Ordering::Relaxed);
+                want_user = true;
+            }
+        }
 
-        if pipe.is_none() {
-            pipe = Pipe::connect();
-            connected.store(pipe.is_some(), std::sync::atomic::Ordering::Relaxed);
-            if pipe.is_none() {
+        // drain replies
+        if let Some(c) = conn.as_ref() {
+            while let Ok(reply) = c.replies.try_recv() {
+                if let Some(hit) = parse_user(&reply) {
+                    if let Ok(mut w) = who.lock() {
+                        *w = hit;
+                    }
+                }
+            }
+            // a reader thread that saw EOF means the pipe is gone
+            if c.pipe.dead() {
+                conn = None;
+                connected.store(false, Ordering::Relaxed);
+            }
+        }
+
+        let Some(c) = conn.as_mut() else { continue };
+
+        if want_user {
+            want_user = false;
+            if let Err(e) = c.pipe.request("GET_CURRENT_USER", "{}") {
+                let _ = e;
+                conn = None;
+                connected.store(false, Ordering::Relaxed);
                 continue;
             }
         }
 
-        let sent = pipe.as_mut().map(|pp| pp.activity(&p)).unwrap_or(false);
-        if !sent {
-            // The pipe went away — Discord closed, or it never finished booting.
-            pipe = None;
-            connected.store(false, std::sync::atomic::Ordering::Relaxed);
-            // Drain so we do not spin on a single failing frame.
-            match rx.try_recv() {
-                Ok(_) | Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Disconnected) => break,
+        if dirty {
+            if let Some(p) = last.clone() {
+                if c.pipe.activity(&p).is_err() {
+                    conn = None;
+                    connected.store(false, Ordering::Relaxed);
+                    continue;
+                }
+                dirty = false;
             }
-            std::thread::sleep(Duration::from_millis(400));
         }
     }
 }
@@ -116,10 +213,41 @@ fn same(a: &Presence, b: &Presence) -> bool {
     a.details == b.details && a.state == b.state && a.large_text == b.large_text && a.mood == b.mood
 }
 
+/// Pull `username` / `id` out of a reply, or an error string when Discord
+/// refused (a fresh install has to authorize the app once).
+fn parse_user(reply: &str) -> Option<Who> {
+    if reply.contains("\"evt\":\"ERROR\"") || reply.contains("\"code\":") {
+        let mut w = Who::default();
+        w.error = Some("authorize VOID inside Discord".to_string());
+        return Some(w);
+    }
+    let name = field(reply, "global_name")
+        .or_else(|| field(reply, "username"))
+        .unwrap_or_default();
+    let id = field(reply, "id").unwrap_or_default();
+    if name.is_empty() {
+        return None;
+    }
+    Some(Who {
+        name,
+        id,
+        error: None,
+    })
+}
+
+fn field(src: &str, key: &str) -> Option<String> {
+    let pat = format!("\"{}\":\"", key);
+    let i = src.find(&pat)? + pat.len();
+    let rest = &src[i..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
 // ── pipe ─────────────────────────────────────────────────────────────────────
 
-struct Pipe {
+pub struct Pipe {
     file: std::fs::File,
+    dead: Arc<AtomicBool>,
 }
 
 impl Pipe {
@@ -132,10 +260,12 @@ impl Pipe {
                 .write(true)
                 .open(&path);
             if let Ok(mut file) = opened {
-                // op 0 = handshake
                 let hello = format!(r#"{{"v":1,"client_id":"{}"}}"#, CLIENT_ID);
                 if write_frame(&mut file, 0, &hello).is_ok() {
-                    return Some(Pipe { file });
+                    return Some(Pipe {
+                        file,
+                        dead: Arc::new(AtomicBool::new(false)),
+                    });
                 }
             }
         }
@@ -147,7 +277,53 @@ impl Pipe {
         None
     }
 
-    fn activity(&mut self, p: &Presence) -> bool {
+    fn dead(&self) -> bool {
+        self.dead.load(Ordering::Relaxed)
+    }
+
+    /// A second thread that only reads. Blocking reads belong on their own
+    /// thread; the writer must stay free for presence updates.
+    fn spawn_reader(&self) -> Receiver<String> {
+        let (tx, rx) = channel::<String>();
+        let dead = self.dead.clone();
+        if let Ok(mut file) = self.file.try_clone() {
+            std::thread::Builder::new()
+                .name("void-rpc-rx".into())
+                .spawn(move || loop {
+                    let mut head = [0u8; 8];
+                    if file.read_exact(&mut head).is_err() {
+                        dead.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    let len = i32::from_le_bytes([head[4], head[5], head[6], head[7]]) as usize;
+                    if len == 0 || len > 1 << 20 {
+                        continue;
+                    }
+                    let mut body = vec![0u8; len];
+                    if file.read_exact(&mut body).is_err() {
+                        dead.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    if tx.send(String::from_utf8_lossy(&body).to_string()).is_err() {
+                        break;
+                    }
+                })
+                .ok();
+        }
+        rx
+    }
+
+    fn request(&mut self, cmd: &str, args: &str) -> std::io::Result<()> {
+        let payload = format!(
+            r#"{{"cmd":"{}","nonce":"{}","args":{}}}"#,
+            cmd,
+            nonce(),
+            args
+        );
+        write_frame(&mut self.file, 1, &payload)
+    }
+
+    fn activity(&mut self, p: &Presence) -> std::io::Result<()> {
         let mut activity = String::new();
         activity.push_str(&format!("\"details\":\"{}\"", esc(&p.details)));
         if !p.state.is_empty() {
@@ -166,14 +342,12 @@ impl Pipe {
             ",\"buttons\":[{{\"label\":\"VOID on GitHub\",\"url\":\"{}\"}}]",
             REPO
         ));
-
-        let payload = format!(
-            r#"{{"cmd":"SET_ACTIVITY","nonce":"{}","args":{{"pid":{},"activity":{{{}}}}}}}"#,
-            nonce(),
+        let args = format!(
+            r#"{{"pid":{},"activity":{{{}}}}}"#,
             std::process::id(),
             activity
         );
-        write_frame(&mut self.file, 1, &payload).is_ok()
+        self.request("SET_ACTIVITY", &args)
     }
 }
 
