@@ -79,7 +79,7 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
-### What's new in 0.8.4 — Porcelain
+### What's new in 0.8.4-0.8.5 — Porcelain
 
 * **The light theme is a real theme now**, not the dark one inverted. The page sits at
   `#e9e9ed` so glass has depth to sit on, cards keep their translucency, and the contour is
@@ -87,7 +87,10 @@ documented way back.
 * **Contours are one function.** `theme::rim()` decides white-or-ink from the mode, so the
   card body, the hover lift and every switch share the same hairline.
 * **Switches stopped lying.** An off switch is a dim grey knob in an outlined track; only an
-  on switch is a filled white slab. Previously both states carried a white knob.
+  on switch is a filled slab. Previously both states carried a white knob.
+* **States follow the mode (0.8.5).** In Porcelain the on-switch is an ink slab with a white
+  knob, the segmented theme control slides an ink indicator under a white label, and the
+  modal's plan inset is a 20-alpha ink veil instead of the page colour. Obsidian is unchanged.
 * The preview pipeline also renders **Settings in Porcelain**, and the README finally points
   at it instead of showing Monitor twice.
 
