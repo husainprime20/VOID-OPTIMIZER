@@ -268,6 +268,13 @@ void-cli app                      launch VOID.exe
 
 ---
 
+## Design language
+
+The interface follows one written standard — **Monochrome Glass**: one near-black surface,
+white light, black glass, motion that settles instead of popping. The spec is
+[`docs/UI-REFERENCE.md`](docs/UI-REFERENCE.md) and the portable implementation
+(CSS/JS, dependency-free, plus an egui mapping) is [`docs/ui-kit/`](docs/ui-kit/README.md).
+
 ## Layout of the source
 
 ```
