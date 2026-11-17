@@ -1726,7 +1726,11 @@ impl App {
                         if !modal.plan.is_empty() {
                             ui.add_space(14.0);
                             egui::Frame::none()
-                                .fill(bg())
+                                .fill(if theme::light() {
+                                    theme::a(theme::ink_light(), 20)
+                                } else {
+                                    bg()
+                                })
                                 .rounding(10.0)
                                 .inner_margin(egui::Margin::same(14.0))
                                 .show(ui, |ui| {

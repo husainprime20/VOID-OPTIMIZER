@@ -582,9 +582,20 @@ pub fn segmented(ui: &mut Ui, items: &[&str], sel: usize, width: f32) -> Option<
         .ctx()
         .animate_value_with_time(ui.id().with("seg-x"), target, 0.16);
     let ind = Rect::from_min_size(Pos2::new(x, inner.top()), Vec2::new(seg_w, inner.height()));
-    ui.painter().rect_filled(ind, 10.0, a(white(), 26));
-    ui.painter()
-        .rect_stroke(ind, 10.0, Stroke::new(1.0_f32, a(white(), 46)));
+    // On porcelain the indicator is ink and the label goes white; on obsidian the
+    // indicator is a thin white veil and the label is already white.
+    if light() {
+        ui.painter().rect_filled(ind, 10.0, a(ink_light(), 232));
+        ui.painter().rect_stroke(
+            ind,
+            10.0,
+            Stroke::new(1.0_f32, a(ink_light(), 250)),
+        );
+    } else {
+        ui.painter().rect_filled(ind, 10.0, a(white(), 26));
+        ui.painter()
+            .rect_stroke(ind, 10.0, Stroke::new(1.0_f32, a(white(), 46)));
+    }
 
     let mut hit = None;
     for (i, label) in items.iter().enumerate() {
@@ -604,12 +615,18 @@ pub fn segmented(ui: &mut Ui, items: &[&str], sel: usize, width: f32) -> Option<
         } else {
             130
         };
+        let fg = if on {
+            // the indicator is a slab in both modes, so the label is always white
+            Color32::WHITE
+        } else {
+            a(if light() { txt() } else { Color32::WHITE }, alpha)
+        };
         ui.painter().text(
             cell.center(),
             Align2::CENTER_CENTER,
             tracked(label),
             micro_font(),
-            a(if light() { txt() } else { Color32::WHITE }, alpha),
+            fg,
         );
         if r.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -636,8 +653,12 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
 
     let hover = ui.ctx().animate_bool(resp.id.with("h"), resp.hovered());
     if *on {
-        ui.painter()
-            .rect_filled(track, 10.0, a(Color32::from_rgb(238, 239, 243), 242));
+        let slab = if light() {
+            a(ink_light(), 238)
+        } else {
+            a(Color32::from_rgb(238, 239, 243), 242)
+        };
+        ui.painter().rect_filled(track, 10.0, slab);
         glow(ui.painter(), track, 10.0, white(), 0.35 + 0.25 * hover);
     } else {
         ui.painter()
@@ -649,7 +670,11 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
     let knob_w = if pressed { 18.0 } else { 14.0 };
     let cx = lerp(track.left() + 3.0 + 7.0, track.right() - 3.0 - 7.0, t);
     let knob = if t > 0.5 {
-        Color32::from_rgb(14, 14, 17)
+        if light() {
+            Color32::WHITE
+        } else {
+            Color32::from_rgb(14, 14, 17)
+        }
     } else {
         a(ink_light(), (150.0 + 60.0 * hover) as u8)
     };
@@ -658,7 +683,7 @@ pub fn toggle(ui: &mut Ui, on: &mut bool) -> Response {
         Vec2::new(knob_w, 14.0),
     );
     ui.painter().rect_filled(knob_rect, 7.0, knob);
-    if !*on {
+    if !*on && !light() {
         ui.painter().circle_filled(
             Pos2::new(knob_rect.center().x, knob_rect.top() + 4.0),
             2.0,
