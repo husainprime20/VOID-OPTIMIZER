@@ -134,7 +134,35 @@ fn face(name: &str) -> FontFamily {
 }
 
 pub fn a(color: Color32, alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+    if alpha >= 200 {
+        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+    } else {
+        over(color, alpha)
+    }
+}
+
+/// egui composites in linear light, so a veil authored the way a designer says it
+/// ("10 % white") lands roughly three times too bright: 26/255 of white over black
+/// displays as 35 % grey, not 10 %. This maps a *displayed* alpha to the linear
+/// alpha that produces it. Everything subtle in this file is authored this way.
+pub fn veil(srgb_alpha: u8) -> Color32 {
+    over(Color32::WHITE, srgb_alpha)
+}
+
+/// `veil` for any colour.
+pub fn over(color: Color32, srgb_alpha: u8) -> Color32 {
+    let s = (srgb_alpha as f32 / 255.0).clamp(0.0, 1.0);
+    let alpha = if srgb_alpha >= 200 {
+        srgb_alpha as f32
+    } else {
+        s.powf(2.2) * 255.0
+    };
+    Color32::from_rgba_unmultiplied(
+        color.r(),
+        color.g(),
+        color.b(),
+        alpha.round().clamp(0.0, 255.0) as u8,
+    )
 }
 
 /// Shorten a machine string so it can never blow up a fixed column.

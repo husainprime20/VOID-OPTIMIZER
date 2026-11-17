@@ -1568,7 +1568,11 @@ impl App {
             .show(ctx, |ui| {
                 let _ = ui.allocate_exact_size(screen.size(), Sense::hover());
                 ui.painter()
-                    .rect_filled(screen, 0.0, Color32::from_black_alpha(if theme::light() { 90 } else { 150 }));
+                    .rect_filled(
+                        screen,
+                        0.0,
+                        Color32::from_black_alpha(if theme::light() { 120 } else { 205 }),
+                    );
             });
 
         let mut run: Option<Action> = None;
@@ -1688,7 +1692,7 @@ impl App {
             .show(ctx, |ui| {
                 let _ = ui.allocate_exact_size(screen.size(), Sense::click());
                 ui.painter()
-                    .rect_filled(screen, 0.0, Color32::from_black_alpha(198));
+                    .rect_filled(screen, 0.0, Color32::from_black_alpha(216));
             });
 
         egui::Area::new(egui::Id::new("void.modal"))
