@@ -87,6 +87,19 @@ impl View {
     }
 }
 
+/// Where the Discord account link is in its lifecycle.
+#[derive(Clone, Default)]
+pub enum Auth {
+    #[default]
+    Idle,
+    /// Discord's consent dialog is open.
+    Waiting,
+    /// The one-time code is being exchanged for a token.
+    Exchanging,
+    Linked(engine::Account),
+    Failed(String),
+}
+
 /// The Discord application id, re-exported for the settings card.
 pub const RPC_CLIENT_ID: &str = crate::rpc::CLIENT_ID;
 
@@ -110,6 +123,8 @@ pub enum Action {
     Theme(u8),
     /// Write a diagnostics report next to the settings.
     ExportReport,
+    /// Open the Discord consent dialog.
+    LinkDiscord,
     /// Apply the matches of the whole pre-flight checklist.
     FixPreflight,
     /// Jump to a view (command palette).
@@ -218,6 +233,12 @@ pub struct App {
     pub guard_at: f64,
     /// Last profile auto-armed, so a running game is only handled once.
     pub last_auto: String,
+    /// Discord account link.
+    pub auth: Auth,
+    pub auth_rx: Option<std::sync::mpsc::Receiver<Result<engine::Account, String>>>,
+    /// The client secret while it is being typed, before it is saved.
+    pub secret_draft: String,
+    pub secret_editing: bool,
     /// Command palette.
     pub palette: bool,
     pub palette_q: String,
@@ -317,6 +338,10 @@ impl App {
             checks_at: -10.0,
             guard_at: 0.0,
             last_auto: String::new(),
+            auth: Auth::Idle,
+            auth_rx: None,
+            secret_draft: String::new(),
+            secret_editing: false,
             palette: false,
             palette_q: String::new(),
             thieves: Vec::new(),
@@ -441,6 +466,7 @@ impl App {
                     },
                 );
             }
+            Action::LinkDiscord => self.authorize_discord(),
             Action::ExportReport => {
                 let (score, _) = self.score();
                 let checks = self.checks.clone();
@@ -539,6 +565,77 @@ impl App {
                 self.chain.remove(0);
                 let ctx = cc.clone();
                 self.start(&ctx, next);
+            }
+        }
+    }
+
+    // ── discord account ─────────────────────────────────────────────────────
+
+    /// Start the consent flow. Requires a client secret, because Discord only
+    /// hands out tokens to a caller that can prove it owns the application.
+    pub fn authorize_discord(&mut self) {
+        if self.state.secret.trim().is_empty() {
+            self.toast(2, "paste your app's client secret first");
+            self.secret_editing = true;
+            return;
+        }
+        if !self.state.presence {
+            self.state.presence = true;
+            self.rpc = crate::rpc::Rpc::start(true);
+            self.state.save();
+        }
+        self.rpc.authorize();
+        self.auth = Auth::Waiting;
+        self.toast(1, "discord · approve VOID in the client");
+    }
+
+    pub fn unlink_discord(&mut self) {
+        self.auth = Auth::Idle;
+        self.auth_rx = None;
+        self.toast(1, "discord account unlinked");
+    }
+
+    fn auth_tick(&mut self) {
+        // consent granted → exchange the code on a worker thread
+        if matches!(self.auth, Auth::Waiting) {
+            if let Some(code) = self.rpc.take_code() {
+                let secret = self.state.secret.clone();
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::Builder::new()
+                    .name("void-oauth".into())
+                    .spawn(move || {
+                        let out = engine::oauth_account(crate::rpc::CLIENT_ID, &secret, &code);
+                        let _ = tx.send(out);
+                    })
+                    .ok();
+                self.auth_rx = Some(rx);
+                self.auth = Auth::Exchanging;
+            }
+        }
+        if matches!(self.auth, Auth::Exchanging) {
+            if let Some(rx) = self.auth_rx.as_ref() {
+                match rx.try_recv() {
+                    Ok(Ok(account)) => {
+                        if account.id.is_empty() {
+                            self.auth = Auth::Failed("profile came back empty".into());
+                        } else {
+                            let handle = account.handle();
+                            self.auth = Auth::Linked(account);
+                            self.state.save();
+                            self.toast(0, format!("discord · linked as {}", handle));
+                        }
+                        self.auth_rx = None;
+                    }
+                    Ok(Err(e)) => {
+                        self.auth = Auth::Failed(e);
+                        self.auth_rx = None;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        self.auth = Auth::Failed("the exchange thread died".into());
+                        self.auth_rx = None;
+                    }
+                }
             }
         }
     }
@@ -1195,13 +1292,16 @@ impl App {
             x + 20.0 + label.chars().count() as f32 * 6.4
         };
 
-        let who = self.rpc.who();
+        let handle = match &self.auth {
+            Auth::Linked(a) => a.handle(),
+            _ => self.rpc.who().name,
+        };
         x = dot(p, x, self.rpc.connected(), "discord", if self.rpc.connected() { dim() } else { ghost() });
-        if !who.name.is_empty() {
+        if !handle.is_empty() {
             p.text(
                 Pos2::new(x, y),
                 Align2::LEFT_CENTER,
-                theme::clip(&who.name, 18),
+                theme::clip(&handle, 18),
                 mono_font(9.5),
                 faint(),
             );
@@ -1395,6 +1495,11 @@ impl App {
                 },
                 "flip the whole deck",
                 Action::Theme(if self.state.theme == 1 { 0 } else { 1 }),
+            ),
+            (
+                "Link Discord account",
+                "authorize VOID against your profile",
+                Action::LinkDiscord,
             ),
             (
                 "Export diagnostics report",
@@ -1742,6 +1847,7 @@ impl eframe::App for App {
             self.sweep = (self.sweep + 0.06).min(1.0);
         }
 
+        self.auth_tick();
         self.presence_tick();
         self.guard_tick(ctx, now);
         self.checks_tick(now);

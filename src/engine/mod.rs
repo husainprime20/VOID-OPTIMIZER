@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.6.0";
+pub const VERSION: &str = "0.7.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -74,6 +74,9 @@ pub struct State {
     pub rain: bool,
     /// Apply a title's profile automatically when it launches.
     pub auto_switch: bool,
+    /// Discord application client secret, pasted by the user. It never leaves
+    /// this machine except to call discord.com during the token exchange.
+    pub secret: String,
 }
 
 pub struct Outcome {
@@ -112,6 +115,7 @@ impl State {
             guard: true,
             rain: true,
             auto_switch: false,
+            secret: String::new(),
         };
         s.load();
         s.push(
@@ -166,6 +170,7 @@ impl State {
                     "guard" => self.guard = truthy(v),
                     "rain" => self.rain = truthy(v),
                     "auto_switch" => self.auto_switch = truthy(v),
+                    "secret" => self.secret = v.to_string(),
                     "applied" => {
                         self.applied = v
                             .split(',')
@@ -181,7 +186,7 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nauto_switch={}\napplied={}\n",
+            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nauto_switch={}\nsecret={}\napplied={}\n",
             self.volume,
             self.intensity,
             if self.muted { 1 } else { 0 },
@@ -193,6 +198,7 @@ impl State {
             if self.guard { 1 } else { 0 },
             if self.rain { 1 } else { 0 },
             if self.auto_switch { 1 } else { 0 },
+            self.secret,
             self.applied.iter().cloned().collect::<Vec<String>>().join(",")
         );
         let _ = fs::write(settings_path(), body);
@@ -219,6 +225,7 @@ impl State {
             "guard" => self.guard = truthy(value),
             "rain" => self.rain = truthy(value),
             "auto_switch" => self.auto_switch = truthy(value),
+            "secret" => self.secret = value.to_string(),
             "muted" => self.muted = truthy(value),
             "motion" => self.motion = truthy(value),
             "auto_backup" => self.auto_backup = truthy(value),
@@ -1886,6 +1893,108 @@ fn run_list(
         outcomes,
         state: st.clone(),
     });
+}
+
+// ─────────────────────────── discord account ────────────────────────────────
+
+/// A Discord account, once the user has authorised VOID against their app.
+#[derive(Clone, Default)]
+pub struct Account {
+    pub name: String,
+    pub display: String,
+    pub id: String,
+    pub avatar: String,
+}
+
+impl Account {
+    pub fn handle(&self) -> String {
+        if self.display.is_empty() {
+            self.name.clone()
+        } else {
+            self.display.clone()
+        }
+    }
+
+    /// Monogram used in the UI instead of downloading an avatar: first glyph of
+    /// the display name, which keeps the app monochrome and dependency-free.
+    pub fn monogram(&self) -> String {
+        self.handle()
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "?".into())
+    }
+
+    pub fn profile_url(&self) -> String {
+        format!("https://discord.com/users/{}", self.id)
+    }
+}
+
+fn url_encode(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    for b in v.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
+fn json_str(src: &str, key: &str) -> Option<String> {
+    let pat = format!("\"{}\":\"", key);
+    let i = src.find(&pat)? + pat.len();
+    let rest = &src[i..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// Exchange the one-time `code` Discord handed back over IPC for an access
+/// token, then read the profile. Both calls go straight to discord.com over
+/// WinHTTP — no server of ours sits in the middle.
+pub fn oauth_account(client_id: &str, secret: &str, code: &str) -> Result<Account, String> {
+    let form = format!(
+        "client_id={}&client_secret={}&grant_type=authorization_code&code={}",
+        url_encode(client_id),
+        url_encode(secret),
+        url_encode(code)
+    );
+    let (status, body) = platform::https(
+        "POST",
+        "discord.com",
+        "/api/oauth2/token",
+        &[("Content-Type", "application/x-www-form-urlencoded")],
+        Some(&form),
+    )?;
+
+    if status != 200 {
+        let why = json_str(&body, "error").unwrap_or_else(|| format!("http {}", status));
+        return Err(format!("discord refused the exchange · {}", why));
+    }
+    let token = json_str(&body, "access_token").ok_or("no access_token in the reply")?;
+
+    let (status, me) = platform::https(
+        "GET",
+        "discord.com",
+        "/api/users/@me",
+        &[
+            ("Authorization", &format!("Bearer {}", token)),
+            ("User-Agent", "VOID/1.0"),
+        ],
+        None,
+    )?;
+    if status != 200 {
+        return Err(format!("profile request failed · http {}", status));
+    }
+
+    Ok(Account {
+        name: json_str(&me, "username").unwrap_or_default(),
+        display: json_str(&me, "global_name").unwrap_or_default(),
+        id: json_str(&me, "id").unwrap_or_default(),
+        avatar: json_str(&me, "avatar").unwrap_or_default(),
+    })
 }
 
 // ───────────────────────────── pre-flight ────────────────────────────────────
