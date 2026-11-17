@@ -3,7 +3,7 @@
 pub mod catalog_views;
 pub mod live;
 
-use eframe::egui::{self, Align, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Align, Align2, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::app::{Action, App, Modal, View};
 use crate::engine::{self, catalog};
@@ -904,78 +904,7 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
         ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
 
-            theme::card(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    theme::micro(ui, "discord");
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if theme::chip_button(ui, "reconnect", false).clicked() {
-                            app.rpc.reconnect();
-                            app.toast(1, "discord · reconnecting");
-                        }
-                        if theme::chip_button(ui, "refresh", false).clicked() {
-                            app.rpc.refresh_user();
-                        }
-                    });
-                });
-                ui.add_space(8.0);
-                let who = app.rpc.who();
-                let linked = app.rpc.connected();
-                ui.horizontal(|ui| {
-                    let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
-                    if linked {
-                        ui.painter().circle_filled(dot.center(), 3.0, white());
-                    } else {
-                        ui.painter()
-                            .circle_stroke(dot.center(), 3.0, Stroke::new(1.0_f32, faint()));
-                    }
-                    ui.add(egui::Label::new(
-                        RichText::new(if linked { "connected" } else { "waiting for the client" })
-                            .font(label_font())
-                            .color(if linked { txt() } else { faint() }),
-                    ));
-                });
-                ui.add_space(4.0);
-                let account = if who.name.is_empty() {
-                    match &who.error {
-                        Some(e) => format!("account · {}", e),
-                        None => "account · not linked yet".to_string(),
-                    }
-                } else {
-                    format!("account · {}", who.name)
-                };
-                ui.add(egui::Label::new(
-                    RichText::new(theme::clip(&account, 52))
-                        .font(mono_font(10.5))
-                        .color(dim()),
-                ));
-                ui.add_space(8.0);
-                ui.add(egui::Label::new(
-                    RichText::new(format!("client id · {}", crate::app::RPC_CLIENT_ID))
-                        .font(mono_font(10.0))
-                        .color(ghost()),
-                ));
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if theme::chip_button(ui, "copy id", false).clicked() {
-                        ui.ctx().copy_text(crate::app::RPC_CLIENT_ID.to_string());
-                        app.toast(0, "client id copied");
-                    }
-                    if theme::chip_button(ui, "presence", app.state.presence).clicked() {
-                        app.state.presence = !app.state.presence;
-                        app.rpc = crate::rpc::Rpc::start(app.state.presence);
-                        app.state.save();
-                    }
-                });
-                ui.add_space(8.0);
-                ui.add(egui::Label::new(
-                    RichText::new(
-                        "Presence runs over the local Discord pipe. The app asks once for permission inside Discord — allow it and your tag appears here.",
-                    )
-                    .font(micro_font())
-                    .color(ghost()),
-                ));
-            });
+            discord_card(app, ui);
 
             ui.add_space(12.0);
 
@@ -1074,5 +1003,157 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
             .font(micro_font())
             .color(ghost()),
         ));
+    });
+}
+
+// ── discord ──────────────────────────────────────────────────────────────────
+
+/// The account link: consent inside the Discord client, token exchange over
+/// WinHTTP, profile shown as a monogram. No browser, no SDK, no server.
+pub fn discord_card(app: &mut App, ui: &mut Ui) {
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "discord account");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::chip_button(ui, "reconnect", false).clicked() {
+                    app.rpc.reconnect();
+                    app.toast(1, "discord · reconnecting");
+                }
+            });
+        });
+        ui.add_space(10.0);
+
+        match app.auth.clone() {
+            crate::app::Auth::Linked(account) => {
+                ui.horizontal(|ui| {
+                    // monogram avatar, drawn — nothing downloaded
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(42.0, 42.0), Sense::hover());
+                    ui.painter().circle_filled(rect.center(), 21.0, a(white(), 230));
+                    ui.painter().text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        account.monogram(),
+                        num_font(20.0),
+                        bg(),
+                    );
+                    ui.add_space(10.0);
+                    ui.vertical(|ui| {
+                        ui.add(egui::Label::new(
+                            RichText::new(account.handle()).font(label_font()).color(txt()),
+                        ));
+                        ui.add(egui::Label::new(
+                            RichText::new(format!("id {}", theme::clip(&account.id, 22)))
+                                .font(mono_font(9.5))
+                                .color(faint()),
+                        ));
+                    });
+                });
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if theme::chip_button(ui, "open profile", false).clicked() {
+                        crate::platform::open_url(&account.profile_url());
+                    }
+                    if theme::chip_button(ui, "unlink", false).clicked() {
+                        app.unlink_discord();
+                    }
+                });
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    RichText::new(
+                        "Linked. Presence now carries your tag, and the card reads from your profile.",
+                    )
+                    .font(micro_font())
+                    .color(ghost()),
+                ));
+            }
+            state => {
+                let (line, colour) = match &state {
+                    crate::app::Auth::Waiting => {
+                        ("approve VOID in the Discord window".to_string(), dim())
+                    }
+                    crate::app::Auth::Exchanging => ("exchanging the token…".to_string(), dim()),
+                    crate::app::Auth::Failed(e) => (format!("failed · {}", theme::clip(e, 46)), faint()),
+                    _ => {
+                        let who = app.rpc.who();
+                        if who.name.is_empty() {
+                            ("not linked · sign in to link".to_string(), faint())
+                        } else {
+                            (format!("local link · {}", who.name), dim())
+                        }
+                    }
+                };
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
+                    if app.rpc.connected() {
+                        ui.painter().circle_filled(dot.center(), 3.0, white());
+                    } else {
+                        ui.painter()
+                            .circle_stroke(dot.center(), 3.0, Stroke::new(1.0_f32, faint()));
+                    }
+                    ui.add(egui::Label::new(RichText::new(line).font(label_font()).color(colour)));
+                });
+
+                ui.add_space(10.0);
+
+                // client secret — pasted by the user, stored locally
+                if app.state.secret.is_empty() || app.secret_editing {
+                    theme::micro(ui, "client secret");
+                    ui.add_space(4.0);
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut app.secret_draft)
+                            .hint_text("paste the secret from the developer portal")
+                            .password(true)
+                            .desired_width(f32::INFINITY)
+                            .font(mono_font(11.0))
+                            .text_color(txt()),
+                    );
+                    let _ = edit;
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if theme::chip_button(ui, "save", false).clicked() {
+                            let v = app.secret_draft.trim().to_string();
+                            if v.is_empty() {
+                                app.toast(2, "the secret cannot be empty");
+                            } else {
+                                app.state.secret = v;
+                                app.state.save();
+                                app.secret_draft.clear();
+                                app.secret_editing = false;
+                                app.toast(0, "client secret stored locally");
+                            }
+                        }
+                        if theme::chip_button(ui, "cancel", false).clicked() {
+                            app.secret_editing = false;
+                            app.secret_draft.clear();
+                        }
+                        if theme::chip_button(ui, "portal", false).clicked() {
+                            crate::platform::open_url(
+                                "https://discord.com/developers/applications/1571961942044713070/oauth2",
+                            );
+                        }
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        if theme::button(ui, "authorize with discord", true).clicked() {
+                            app.authorize_discord();
+                        }
+                        ui.add_space(8.0);
+                        if theme::chip_button(ui, "replace secret", false).clicked() {
+                            app.secret_editing = true;
+                        }
+                    });
+                }
+
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    RichText::new(
+                        "VOID opens Discord's own consent dialog, then exchanges the code straight to discord.com with your app secret. Nothing is sent anywhere else and no secret ships in the binary.",
+                    )
+                    .font(micro_font())
+                    .color(ghost()),
+                ));
+            }
+        }
     });
 }

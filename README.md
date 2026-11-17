@@ -5,7 +5,7 @@
 **A luxury-grade competitive gaming optimizer.**
 A native desktop app — one window, drawn on the GPU. Engine in-process, every lever documented, every change reversible.
 
-`v0.6.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
+`v0.7.0` · native UI · 8 ms cold start · verified tweaks · Free Fire / FF Max · monochrome · ambient audio
 
 [![build](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml/badge.svg)](https://github.com/husainprime20/VOID-OPTIMIZER/actions/workflows/build.yml)
 [![latest release](https://img.shields.io/github/v/release/husainprime20/VOID-OPTIMIZER?label=download&color=ffffff)](https://github.com/husainprime20/VOID-OPTIMIZER/releases/latest)
@@ -78,6 +78,22 @@ documented way back.
 | **01 Dashboard** | also: **game watch** — recognises running games from the process table and offers the matching loadout |
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
+
+### What's new in 0.7.0
+
+* **Discord account authorization.** The real flow, end to end, with no backend and no
+  dependency: VOID asks the local Discord client for consent (`AUTHORIZE`, scope `identify`),
+  takes the one-time code, exchanges it for a token **straight to `discord.com` over
+  WinHTTP**, and reads `/api/users/@me` — so the app knows your name, id and avatar hash.
+  The account shows as a drawn monogram, a tag in the status bar, and an *open profile* link.
+  Your app's client secret is pasted into Settings and stays on this machine; **no secret
+  ships inside the binary**, which is the only defensible way to ship OAuth in a desktop app.
+* **WinHTTP, natively.** `platform::https` is ~120 lines of Win32: `WinHttpOpen` →
+  `WinHttpConnect` → `WinHttpOpenRequest` → `SendRequest` → `ReadData`, with timeouts and
+  the system TLS stack. No TLS crate, no `curl`, no PowerShell, no console flash.
+* **Unlink and replace.** *Unlink* drops the session, *replace secret* opens the field again,
+  and the consent dialog is re-opened per request — Discord remembers a granted app.
+* **Link from the palette.** `Ctrl/⌘+K` → "Link Discord account".
 
 ### What's new in 0.6.0
 

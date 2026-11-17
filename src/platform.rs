@@ -860,6 +860,130 @@ mod win {
         out
     }
 
+    pub fn https(
+        method: &str,
+        host: &str,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: Option<&str>,
+    ) -> Result<super::HttpResponse, String> {
+        use std::ffi::c_void;
+        const SECURE: u32 = 0x0080_0000;
+        const NO_PROXY_AUTO: u32 = 0; // WINHTTP_ACCESS_TYPE_DEFAULT_PROXY
+        const STATUS_CODE: u32 = 19 | 0x2000_0000; // WINHTTP_QUERY_STATUS_CODE | _FLAG_NUMBER
+
+        unsafe {
+            let agent = super::wide("VOID/1.0 (competitive optimizer)");
+            let session = super::shell::WinHttpOpen(agent.as_ptr(), NO_PROXY_AUTO, std::ptr::null(), std::ptr::null(), 0);
+            if session.is_null() {
+                return Err("winhttp: session failed".into());
+            }
+            super::shell::WinHttpSetTimeouts(session, 5000, 6000, 8000, 9000);
+
+            let host_w = super::wide(host);
+            let connect = super::shell::WinHttpConnect(session, host_w.as_ptr(), 443, 0);
+            if connect.is_null() {
+                super::shell::WinHttpCloseHandle(session);
+                return Err("winhttp: connect failed".into());
+            }
+
+            let verb = super::wide(method);
+            let object = super::wide(path);
+            let request = super::shell::WinHttpOpenRequest(
+                connect,
+                verb.as_ptr(),
+                object.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SECURE,
+            );
+            if request.is_null() {
+                super::shell::WinHttpCloseHandle(connect);
+                super::shell::WinHttpCloseHandle(session);
+                return Err("winhttp: request failed".into());
+            }
+            super::shell::WinHttpSetTimeouts(request, 5000, 6000, 8000, 9000);
+
+            let header_str = headers
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v))
+                .collect::<Vec<String>>()
+                .join("\r\n");
+            let headers_w = if header_str.is_empty() {
+                Vec::new()
+            } else {
+                super::wide(&header_str)
+            };
+            let headers_ptr = if headers_w.is_empty() {
+                std::ptr::null()
+            } else {
+                headers_w.as_ptr()
+            };
+
+            let payload = body.unwrap_or("");
+            let sent = super::shell::WinHttpSendRequest(
+                request,
+                headers_ptr,
+                if headers_w.is_empty() { 0 } else { u32::MAX },
+                payload.as_ptr() as *const c_void,
+                payload.len() as u32,
+                payload.len() as u32,
+                0,
+            );
+            if sent == 0 {
+                super::shell::WinHttpCloseHandle(request);
+                super::shell::WinHttpCloseHandle(connect);
+                super::shell::WinHttpCloseHandle(session);
+                return Err("winhttp: send failed".into());
+            }
+
+            let received = super::shell::WinHttpReceiveResponse(request, std::ptr::null_mut());
+            if received == 0 {
+                super::shell::WinHttpCloseHandle(request);
+                super::shell::WinHttpCloseHandle(connect);
+                super::shell::WinHttpCloseHandle(session);
+                return Err("winhttp: no response".into());
+            }
+
+            let mut status: u32 = 0;
+            let mut len: u32 = std::mem::size_of::<u32>() as u32;
+            super::shell::WinHttpQueryHeaders(
+                request,
+                STATUS_CODE,
+                std::ptr::null(),
+                &mut status as *mut u32 as *mut c_void,
+                &mut len,
+                std::ptr::null_mut(),
+            );
+
+            let mut body_out: Vec<u8> = Vec::new();
+            loop {
+                let mut buf = [0u8; 8192];
+                let mut got: u32 = 0;
+                let ok = super::shell::WinHttpReadData(
+                    request,
+                    buf.as_mut_ptr() as *mut c_void,
+                    buf.len() as u32,
+                    &mut got,
+                );
+                if ok == 0 || got == 0 {
+                    break;
+                }
+                body_out.extend_from_slice(&buf[..got as usize]);
+                if body_out.len() > 1 << 20 {
+                    break;
+                }
+            }
+
+            super::shell::WinHttpCloseHandle(request);
+            super::shell::WinHttpCloseHandle(connect);
+            super::shell::WinHttpCloseHandle(session);
+
+            Ok((status, String::from_utf8_lossy(&body_out).to_string()))
+        }
+    }
+
     pub fn set_affinity(pid: u32, mask: usize) -> Result<(), String> {
         unsafe {
             let handle = OpenProcess(
@@ -907,6 +1031,63 @@ mod shell {
             dir: *const u16,
             show: i32,
         ) -> isize;
+    }
+    #[link(name = "winhttp")]
+    extern "system" {
+        pub fn WinHttpOpen(
+            agent: *const u16,
+            access: u32,
+            proxy: *const u16,
+            bypass: *const u16,
+            flags: u32,
+        ) -> *mut std::ffi::c_void;
+        pub fn WinHttpConnect(
+            session: *mut std::ffi::c_void,
+            host: *const u16,
+            port: u16,
+            reserved: u32,
+        ) -> *mut std::ffi::c_void;
+        pub fn WinHttpOpenRequest(
+            connect: *mut std::ffi::c_void,
+            verb: *const u16,
+            object: *const u16,
+            version: *const u16,
+            referrer: *const u16,
+            accept: *const *const u16,
+            flags: u32,
+        ) -> *mut std::ffi::c_void;
+        pub fn WinHttpSendRequest(
+            request: *mut std::ffi::c_void,
+            headers: *const u16,
+            headers_len: u32,
+            optional: *const std::ffi::c_void,
+            optional_len: u32,
+            total_len: u32,
+            context: usize,
+        ) -> i32;
+        pub fn WinHttpReceiveResponse(request: *mut std::ffi::c_void, reserved: *mut std::ffi::c_void) -> i32;
+        pub fn WinHttpQueryHeaders(
+            request: *mut std::ffi::c_void,
+            info_level: u32,
+            name: *const u16,
+            buffer: *mut std::ffi::c_void,
+            len: *mut u32,
+            index: *mut u32,
+        ) -> i32;
+        pub fn WinHttpReadData(
+            request: *mut std::ffi::c_void,
+            buffer: *mut std::ffi::c_void,
+            to_read: u32,
+            read: *mut u32,
+        ) -> i32;
+        pub fn WinHttpSetTimeouts(
+            handle: *mut std::ffi::c_void,
+            resolve: i32,
+            connect: i32,
+            send: i32,
+            receive: i32,
+        ) -> i32;
+        pub fn WinHttpCloseHandle(handle: *mut std::ffi::c_void) -> i32;
     }
     #[link(name = "user32")]
     extern "system" {
@@ -1210,6 +1391,56 @@ pub fn uptime_secs() -> i64 {
             .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(0.0) as i64,
         Err(_) => 0,
+    }
+}
+
+// ── HTTPS (WinHTTP) ─────────────────────────────────────────────────────────
+//
+// VOID needs exactly one kind of network call: a POST to discord.com and a GET
+// of the signed-in profile. WinHTTP is part of Windows, talks TLS with the
+// system stack and costs no dependency, so the app stays a single binary.
+
+pub type HttpResponse = (u32, String);
+
+/// Issue an HTTPS request. `headers` are raw `Name: value` pairs, `body` is sent
+/// verbatim (form-encoded by the caller).
+pub fn https(
+    method: &str,
+    host: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: Option<&str>,
+) -> Result<HttpResponse, String> {
+    #[cfg(windows)]
+    {
+        win::https(method, host, path, headers, body)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (method, host, path, headers, body);
+        Err("https is Windows-only".to_string())
+    }
+}
+
+pub fn open_url(url: &str) {
+    #[cfg(windows)]
+    {
+        let op = wide("open");
+        let target = wide(url);
+        unsafe {
+            shell::ShellExecuteW(
+                0,
+                op.as_ptr(),
+                target.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1,
+            );
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = url;
     }
 }
 

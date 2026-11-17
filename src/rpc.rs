@@ -38,6 +38,8 @@ enum Cmd {
     WhoAmI,
     /// Drop the connection and reconnect on the next tick.
     Reconnect,
+    /// Ask Discord to show its own "allow VOID?" dialog for these scopes.
+    Authorize(String),
 }
 
 /// What Discord told us about the signed-in account.
@@ -54,6 +56,7 @@ pub struct Rpc {
     tx: Option<Sender<Cmd>>,
     connected: Arc<AtomicBool>,
     who: Arc<Mutex<Who>>,
+    code: Arc<Mutex<Option<String>>>,
 }
 
 impl Rpc {
@@ -62,25 +65,42 @@ impl Rpc {
     pub fn start(enabled: bool) -> Rpc {
         let connected = Arc::new(AtomicBool::new(false));
         let who = Arc::new(Mutex::new(Who::default()));
+        let code = Arc::new(Mutex::new(None));
         if !enabled {
             return Rpc {
                 tx: None,
                 connected,
                 who,
+                code,
             };
         }
         let (tx, rx) = channel::<Cmd>();
         let flag = connected.clone();
         let w = who.clone();
+        let c = code.clone();
         std::thread::Builder::new()
             .name("void-rpc".into())
-            .spawn(move || worker(rx, flag, w))
+            .spawn(move || worker(rx, flag, w, c))
             .ok();
         Rpc {
             tx: Some(tx),
             connected,
             who,
+            code,
         }
+    }
+
+    /// Start the OAuth consent dialog inside Discord. The one-time code lands in
+    /// `take_code()` a moment later.
+    pub fn authorize(&self) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Cmd::Authorize("identify".to_string()));
+        }
+    }
+
+    /// The code Discord returned, if the user said yes.
+    pub fn take_code(&self) -> Option<String> {
+        self.code.lock().ok().and_then(|mut c| c.take())
     }
 
     pub fn connected(&self) -> bool {
@@ -120,11 +140,18 @@ struct Conn {
     replies: Receiver<String>,
 }
 
-fn worker(rx: Receiver<Cmd>, connected: Arc<AtomicBool>, who: Arc<Mutex<Who>>) {
+fn worker(
+    rx: Receiver<Cmd>,
+    connected: Arc<AtomicBool>,
+    who: Arc<Mutex<Who>>,
+    code: Arc<Mutex<Option<String>>>,
+) {
     let mut conn: Option<Conn> = None;
     let mut last: Option<Presence> = None;
     let mut dirty = false;
     let mut want_user = true;
+    let mut want_auth = false;
+    let mut scopes_wanted = String::from("identify");
     let mut last_try = std::time::Instant::now() - Duration::from_secs(60);
 
     loop {
@@ -144,6 +171,11 @@ fn worker(rx: Receiver<Cmd>, connected: Arc<AtomicBool>, who: Arc<Mutex<Who>>) {
             }
             Some(Cmd::WhoAmI) => {
                 want_user = true;
+                force = true;
+            }
+            Some(Cmd::Authorize(scopes)) => {
+                scopes_wanted = scopes;
+                want_auth = true;
                 force = true;
             }
             Some(Cmd::Reconnect) => {
@@ -176,6 +208,15 @@ fn worker(rx: Receiver<Cmd>, connected: Arc<AtomicBool>, who: Arc<Mutex<Who>>) {
                         *w = hit;
                     }
                 }
+                if reply.contains("\"cmd\":\"AUTHORIZE\"") {
+                    if let Some(c) = field(&reply, "code") {
+                        if let Ok(mut slot) = code.lock() {
+                            *slot = Some(c);
+                        }
+                    } else if let Ok(mut w) = who.lock() {
+                        w.error = Some("authorization was declined".to_string());
+                    }
+                }
             }
             // a reader thread that saw EOF means the pipe is gone
             if c.pipe.dead() {
@@ -185,6 +226,24 @@ fn worker(rx: Receiver<Cmd>, connected: Arc<AtomicBool>, who: Arc<Mutex<Who>>) {
         }
 
         let Some(c) = conn.as_mut() else { continue };
+
+        if want_auth {
+            want_auth = false;
+            let scopes: Vec<String> = scopes_wanted
+                .split(',')
+                .map(|s| format!("\"{}\"", s.trim()))
+                .collect();
+            let args = format!(
+                r#"{{"client_id":"{}","scopes":[{}]}}"#,
+                CLIENT_ID,
+                scopes.join(",")
+            );
+            if c.pipe.request("AUTHORIZE", &args).is_err() {
+                conn = None;
+                connected.store(false, Ordering::Relaxed);
+                continue;
+            }
+        }
 
         if want_user {
             want_user = false;
