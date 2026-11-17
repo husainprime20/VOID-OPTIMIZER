@@ -764,6 +764,42 @@ impl App {
     }
 
     // ── chrome ──────────────────────────────────────────────────────────────
+    /// Rain, painted inside the panel that calls it: behind the cards, visible
+    /// in the gutters, clipped by the panel. Deterministic per drop, no state.
+    fn paint_rain(&self, ui: &Ui, now: f64) {
+        if !self.state.motion || !self.state.rain {
+            return;
+        }
+        let rect = ui.max_rect();
+        let p = ui.painter().with_clip_rect(rect);
+        let t = now as f32;
+        for band in 0..3 {
+            let count = [34, 22, 13][band];
+            let speed = [900.0, 560.0, 320.0][band];
+            let length = [24.0, 38.0, 56.0][band];
+            let alpha = [14.0, 22.0, 30.0][band];
+            let width = [0.7, 0.9, 1.1][band];
+            for i in 0..count {
+                let seed = (band as f32 + 1.0) * 97.0 + i as f32 * 13.7;
+                let x = ((seed * 7919.0).sin().fract().abs()) * rect.width();
+                let phase = (seed * 3571.0).cos().fract().abs();
+                let span = rect.height() + length * 2.0;
+                let travel = (t * speed * (0.85 + phase * 0.3) + phase * 1600.0) % span;
+                let y = travel - length;
+                let drift = (travel * 0.02).sin() * 5.0;
+                let edge = ((travel / 90.0).min(1.0) * ((span - travel) / 120.0).min(1.0))
+                    .clamp(0.0, 1.0);
+                p.line_segment(
+                    [
+                        Pos2::new(rect.left() + x + drift, rect.top() + y),
+                        Pos2::new(rect.left() + x + drift - 2.0, rect.top() + y + length),
+                    ],
+                    Stroke::new(width, a(white(), (alpha * edge) as u8)),
+                );
+            }
+        }
+    }
+
     fn rail(&mut self, ui: &mut Ui, now: f64) {
         ui.add_space(4.0);
         let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::hover());
@@ -1716,41 +1752,6 @@ impl eframe::App for App {
                 .show(ctx, |ui| {
                     let p = ui.painter();
 
-                    // ── rain ──
-                    // Three depth bands of streaks. Each drop has a fixed column,
-                    // speed and phase derived from its index, so the field is
-                    // deterministic and costs nothing to store.
-                    let t = now as f32;
-                    for band in 0..(if self.state.rain { 3 } else { 0 }) {
-                        let count = [46, 30, 18][band];
-                        let speed = [860.0, 520.0, 300.0][band];
-                        let length = [26.0, 40.0, 58.0][band];
-                        let alpha = [16.0, 24.0, 34.0][band];
-                        let width = [0.7, 0.9, 1.1][band];
-                        for i in 0..count {
-                            let seed = (band as f32 + 1.0) * 97.0 + i as f32 * 13.7;
-                            let x = ((seed * 7919.0).sin().fract().abs()) * screen.width();
-                            let phase = (seed * 3571.0).cos().fract().abs();
-                            let travel = (t * speed * (0.85 + phase * 0.3) + phase * 1600.0)
-                                % (screen.height() + length * 2.0);
-                            let y = travel - length;
-                            let drift = (travel * 0.02).sin() * 6.0;
-                            let p0 = Pos2::new(screen.left() + x + drift, screen.top() + y);
-                            let p1 = Pos2::new(
-                                screen.left() + x + drift - 2.5,
-                                screen.top() + y + length,
-                            );
-                            // fade at the very top and bottom of the fall
-                            let edge = ((travel / 90.0).min(1.0)
-                                * (((screen.height() + length - travel) / 120.0).min(1.0)))
-                            .clamp(0.0, 1.0);
-                            p.line_segment(
-                                [p0, p1],
-                                Stroke::new(width, a(white(), (alpha * edge) as u8)),
-                            );
-                        }
-                    }
-
                     for i in 0..40 {
                         let seed = i as f32 * 12.9898;
                         let x = ((seed.sin() * 43758.5453).fract().abs() * screen.width()
@@ -1778,6 +1779,7 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(18.0, 18.0)),
             )
             .show(ctx, |ui| {
+                self.paint_rain(ui, now);
                 self.rail(ui, now);
             });
 
@@ -1825,6 +1827,7 @@ impl eframe::App for App {
                     .inner_margin(egui::Margin::symmetric(30.0, 20.0)),
             )
             .show(ctx, |ui| {
+                self.paint_rain(ui, now);
                 // wipe on view change: a hairline that sweeps across the top
                 let age = (now - self.view_at) as f32;
                 if age < 0.45 {
