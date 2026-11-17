@@ -301,7 +301,18 @@ pub fn card_styled<R>(
         .rounding(rounding)
         .inner_margin(egui::Margin::same(pad));
 
-    frame.show(ui, add).inner
+    let out = frame.show(ui, add);
+    // a one-pixel highlight along the top edge: enough depth to read as a
+    // surface without a single gradient
+    let r = out.response.rect;
+    ui.painter().line_segment(
+        [
+            Pos2::new(r.left() + rounding, r.top() + 0.5),
+            Pos2::new(r.right() - rounding, r.top() + 0.5),
+        ],
+        Stroke::new(1.0_f32, a(white(), if light() { 10 } else { 14 })),
+    );
+    out.inner
 }
 
 /// Card that lifts its border when the pointer is inside it.

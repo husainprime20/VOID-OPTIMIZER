@@ -855,6 +855,16 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                     app.state.guard,
                     "re-asserts applied edits that drift".into(),
                 ));
+                rows.push((
+                    "Rain",
+                    app.state.rain,
+                    "ambient streaks behind the deck".into(),
+                ));
+                rows.push((
+                    "Auto-loadout",
+                    app.state.auto_switch,
+                    "arms a title's set when it launches".into(),
+                ));
                 for (label, on, hint) in rows {
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -867,6 +877,10 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                                         app.rpc = crate::rpc::Rpc::start(app.state.presence);
                                     }
                                     "Void guard" => app.state.guard = !app.state.guard,
+                                    "Rain" => app.state.rain = !app.state.rain,
+                                    "Auto-loadout" => {
+                                        app.state.auto_switch = !app.state.auto_switch
+                                    }
                                     _ => app.state.auto_backup = !app.state.auto_backup,
                                 }
                                 app.state.save();
@@ -889,6 +903,81 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
 
         ui.allocate_ui_with_layout(Vec2::new(half, 0.0), Layout::top_down(Align::Min), |ui| {
             ui.set_width(half);
+
+            theme::card(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    theme::micro(ui, "discord");
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if theme::chip_button(ui, "reconnect", false).clicked() {
+                            app.rpc.reconnect();
+                            app.toast(1, "discord · reconnecting");
+                        }
+                        if theme::chip_button(ui, "refresh", false).clicked() {
+                            app.rpc.refresh_user();
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                let who = app.rpc.who();
+                let linked = app.rpc.connected();
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
+                    if linked {
+                        ui.painter().circle_filled(dot.center(), 3.0, white());
+                    } else {
+                        ui.painter()
+                            .circle_stroke(dot.center(), 3.0, Stroke::new(1.0_f32, faint()));
+                    }
+                    ui.add(egui::Label::new(
+                        RichText::new(if linked { "connected" } else { "waiting for the client" })
+                            .font(label_font())
+                            .color(if linked { txt() } else { faint() }),
+                    ));
+                });
+                ui.add_space(4.0);
+                let account = if who.name.is_empty() {
+                    match &who.error {
+                        Some(e) => format!("account · {}", e),
+                        None => "account · not linked yet".to_string(),
+                    }
+                } else {
+                    format!("account · {}", who.name)
+                };
+                ui.add(egui::Label::new(
+                    RichText::new(theme::clip(&account, 52))
+                        .font(mono_font(10.5))
+                        .color(dim()),
+                ));
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    RichText::new(format!("client id · {}", crate::app::RPC_CLIENT_ID))
+                        .font(mono_font(10.0))
+                        .color(ghost()),
+                ));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if theme::chip_button(ui, "copy id", false).clicked() {
+                        ui.ctx().copy_text(crate::app::RPC_CLIENT_ID.to_string());
+                        app.toast(0, "client id copied");
+                    }
+                    if theme::chip_button(ui, "presence", app.state.presence).clicked() {
+                        app.state.presence = !app.state.presence;
+                        app.rpc = crate::rpc::Rpc::start(app.state.presence);
+                        app.state.save();
+                    }
+                });
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    RichText::new(
+                        "Presence runs over the local Discord pipe. The app asks once for permission inside Discord — allow it and your tag appears here.",
+                    )
+                    .font(micro_font())
+                    .color(ghost()),
+                ));
+            });
+
+            ui.add_space(12.0);
 
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());

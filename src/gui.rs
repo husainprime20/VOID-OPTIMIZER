@@ -23,6 +23,18 @@ mod views;
 
 use eframe::egui;
 
+/// The window / taskbar icon, embedded as raw RGBA so no image decoder is
+/// linked in. `assets/icon64.rgba` is generated from the brand mark in
+/// `docs/branding/` — see the note there.
+fn window_icon() -> egui::IconData {
+    const RGBA: &[u8] = include_bytes!("../assets/icon64.rgba");
+    egui::IconData {
+        rgba: RGBA.to_vec(),
+        width: 64,
+        height: 64,
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let boot = std::time::Instant::now();
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -51,6 +63,7 @@ fn main() -> eframe::Result<()> {
             // opens maximised: the deck is laid out to breathe, and it can never
             // be clipped by a 1366x768 laptop panel
             .with_maximized(true)
+            .with_icon(window_icon())
             .with_title("VOID — Competitive Optimizer"),
         vsync: true,
         multisampling: 0,
