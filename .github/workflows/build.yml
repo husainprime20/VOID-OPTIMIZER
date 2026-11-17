@@ -192,6 +192,8 @@ jobs:
           Copy-Item target\release\void.exe dist\VOID.exe
           Copy-Item target\release\void-cli.exe dist\void-cli.exe
           Copy-Item README.md dist\README.md
+          Copy-Item docs\branding\VOID-icon-512.png dist\VOID-icon-512.png
+          Copy-Item assets\void.ico dist\VOID.ico
 
           @"
           VOID $ver — competitive gaming optimizer
@@ -208,7 +210,7 @@ jobs:
           - 42 documented, reversible tweaks across power, kernel, CPU, GPU,
             network, input, storage and a dedicated Free Fire lane.
           - Live telemetry, sleep-jitter benchmark, process boost, eDPI lab.
-          - Built-in ambient bed (three presets, volume control) — calm, low, slow.
+          - Built-in ambient bed (four presets, volume control) — calm, low, slow.
           - Every write verified by reading it back; one-click revert of everything.
 
           SAFETY
@@ -246,7 +248,7 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $entries = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path "VOID-$ver-windows-x64.zip")).Entries.FullName
           Write-Host ("zip entries: " + ($entries -join ", "))
-          foreach ($need in @("VOID.exe", "void-cli.exe", "RUN-AS-ADMIN.bat", "READ-ME-FIRST.txt", "README.md")) {
+          foreach ($need in @("VOID.exe", "void-cli.exe", "RUN-AS-ADMIN.bat", "READ-ME-FIRST.txt", "README.md", "VOID-icon-512.png", "VOID.ico")) {
             if ($entries -notcontains $need) { throw "zip is missing $need" }
           }
 
@@ -261,6 +263,8 @@ jobs:
           path: |
             dist/VOID.exe
             dist/void-cli.exe
+            dist/VOID-icon-512.png
+            dist/VOID.ico
             VOID-*-windows-x64.zip
             SHA256SUMS.txt
           if-no-files-found: error
@@ -281,7 +285,7 @@ jobs:
           } else {
             $tag = "v$ver"
           }
-          $assets = @("dist/VOID.exe", "dist/void-cli.exe", "VOID-$ver-windows-x64.zip", "SHA256SUMS.txt")
+          $assets = @("dist/VOID.exe", "dist/void-cli.exe", "VOID-$ver-windows-x64.zip", "SHA256SUMS.txt", "dist/VOID-icon-512.png", "dist/VOID.ico")
 
           $sha = $env:GITHUB_SHA
           $repo = $env:GITHUB_REPOSITORY
@@ -293,6 +297,17 @@ jobs:
           webview, no localhost server, no console window behind it.
 
           **Run:** double-click VOID.exe. It asks for Administrator once, then opens.
+
+          ### What changed in 0.6.0
+          - **The mark.** `VOID-icon-512.png` ships next to the exe: drop it into the
+            Discord developer portal as the asset `void_idle` and your presence card
+            gets the VOID icon. The window and taskbar icon are embedded in the exe.
+          - **Rain.** Three parallax bands fall behind the deck — behind the cards, not
+            on top of them. Toggle in Settings.
+          - **Discord link.** VOID asks the local Discord client who is signed in and
+            shows your tag in the status bar and in the Discord card.
+          - **Auto-loadout.** Arms a title's tuning set the moment the game launches.
+          - **Status bar.** Build, discord, guard and live score along the bottom.
 
           ### What changed in 0.3.0
           - **8 ms cold start.** Machine identity, admin state and the power plan are
@@ -315,7 +330,7 @@ jobs:
             eDPI lab.
 
           ### What's inside
-          - **42** documented, reversible tweaks · **7** profiles
+          - **85** documented, reversible tweaks · **9** profiles · 12 emulators
           - **Kernel tier** — timer resolution, TSC sync policy, HAGS, Win32PrioritySeparation, VBS off
           - **Free Fire / FF Max** — emulator priority and core pinning, low-latency net stack
           - **Latency** — Nagle off on every interface, MMCSS Games task, network throttling off
