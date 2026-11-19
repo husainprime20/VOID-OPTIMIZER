@@ -1299,7 +1299,7 @@ pub fn processes() -> Vec<(String, u32, f64)> {
     }
     #[cfg(not(windows))]
     {
-        Vec::new()
+        procfs::processes()
     }
 }
 
@@ -1313,7 +1313,7 @@ pub fn cpu_times() -> Vec<(String, u32, u64)> {
     }
     #[cfg(not(windows))]
     {
-        Vec::new()
+        procfs::cpu_times()
     }
 }
 
@@ -1751,5 +1751,78 @@ pub fn net_counters() -> Option<(u64, u64)> {
         None
     } else {
         Some((rx, tx))
+    }
+}
+
+/// The same two readings from procfs, so the Linux build (the CLI, and the
+/// screenshot CI) shows a real process table instead of an empty one.
+#[cfg(not(windows))]
+mod procfs {
+    fn pids() -> Vec<u32> {
+        let mut out = Vec::new();
+        if let Ok(dir) = std::fs::read_dir("/proc") {
+            for entry in dir.flatten() {
+                if let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() {
+                    out.push(pid);
+                }
+            }
+        }
+        out
+    }
+
+    /// (name, cpu ticks) from /proc/<pid>/stat. The comm field can contain
+    /// spaces and parentheses, so it is sliced between the first `(` and the
+    /// last `)` — everything after that is plain numbers.
+    fn stat(pid: u32) -> Option<(String, u64)> {
+        let text = std::fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+        let open = text.find('(')?;
+        let close = text.rfind(')')?;
+        let name = text.get(open + 1..close)?.to_string();
+        let rest: Vec<&str> = text.get(close + 1..)?.split_whitespace().collect();
+        // field 3 is the first token here, so utime (14) and stime (15) are 11 and 12
+        if rest.len() < 13 {
+            return None;
+        }
+        let utime = rest[11].parse::<u64>().ok()?;
+        let stime = rest[12].parse::<u64>().ok()?;
+        Some((name, utime + stime))
+    }
+
+    pub fn processes() -> Vec<(String, u32, f64)> {
+        let mut out = Vec::new();
+        for pid in pids() {
+            let Ok(text) = std::fs::read_to_string(format!("/proc/{}/status", pid)) else {
+                continue;
+            };
+            let mut name = String::new();
+            let mut rss = 0.0;
+            for line in text.lines() {
+                if let Some(rest) = line.strip_prefix("Name:") {
+                    name = rest.trim().to_string();
+                } else if let Some(rest) = line.strip_prefix("VmRSS:") {
+                    rss = rest
+                        .split_whitespace()
+                        .next()
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.0)
+                        / 1024.0;
+                }
+            }
+            if !name.is_empty() {
+                out.push((name, pid, rss));
+            }
+        }
+        out
+    }
+
+    pub fn cpu_times() -> Vec<(String, u32, u64)> {
+        let mut out = Vec::new();
+        for pid in pids() {
+            if let Some((name, ticks)) = stat(pid) {
+                // USER_HZ is 100/s; the UI does its arithmetic in 100 ns ticks
+                out.push((name, pid, ticks * 100_000));
+            }
+        }
+        out
     }
 }

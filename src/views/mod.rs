@@ -259,7 +259,8 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 });
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                theme::ring_sweep(ui, coverage, 84.0, "readiness", app.sweep);
+                ui.add_space(10.0);
+                theme::ring_sweep(ui, coverage, 88.0, "readiness", app.sweep);
             });
         });
     });
