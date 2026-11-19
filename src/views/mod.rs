@@ -183,48 +183,53 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     // eased, so the ring slides instead of snapping
     let coverage = app.cov;
 
+    // ── the action bar: the one press, and what it will do ──────────────────
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
+        ui.horizontal(|ui| {
             ui.vertical(|ui| {
-                ui.set_width((ui.available_width() - 200.0).max(320.0));
                 theme::micro(ui, "catalog coverage");
-                ui.add_space(6.0);
+                ui.add_space(1.0);
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 3.0;
                     ui.add(egui::Label::new(
-                        RichText::new(format!("{:.0}", coverage)).font(num_font(54.0)).color(txt()),
+                        RichText::new(format!("{:.0}", coverage))
+                            .font(num_font(38.0))
+                            .color(txt()),
                     ));
                     ui.add(egui::Label::new(
-                        RichText::new("%").font(num_font(24.0)).color(faint()),
+                        RichText::new("%").font(num_font(16.0)).color(faint()),
                     ));
                 });
-                ui.add_space(2.0);
                 ui.add(egui::Label::new(
                     RichText::new(format!(
-                        "{} applied · {} verified on this machine · {} profiles",
+                        "{} applied · {} verified · {} profiles",
                         applied,
                         app.tally().1,
                         catalog::PROFILES.len()
                     ))
-                    .font(body_font())
+                    .font(mono_font(10.0))
                     .color(faint()),
                 ));
-                ui.add_space(16.0);
+            });
+            ui.add_space(28.0);
+            ui.vertical(|ui| {
+                ui.add_space(2.0);
                 ui.horizontal(|ui| {
                     if theme::button(ui, "match mode", true).clicked() {
                         app.run_action(ui.ctx(), Action::MatchMode);
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     if theme::chip_button(ui, "esports set", false).clicked() {
                         let m = confirm_profile(app, "esports");
                         app.modal = Some(m);
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     if theme::chip_button(ui, "ignite", false).clicked() {
                         let m = confirm_profile(app, "competitive");
                         app.modal = Some(m);
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(6.0);
                     if theme::button(ui, "revert everything", false).clicked() {
                         app.modal = Some(Modal {
                             kicker: "safety".into(),
@@ -244,30 +249,18 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                         });
                     }
                 });
-
-                ui.add_space(18.0);
-                ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
-                    let machine = [
-                        ("host", app.machine.host.clone()),
-                        ("cpu", app.machine.cpu.clone()),
-                        ("gpu", app.machine.gpu.clone()),
-                    ];
-                    for (k, v) in machine {
-                        ui.vertical(|ui| {
-                            theme::micro(ui, k);
-                            ui.add_space(2.0);
-                            ui.add(egui::Label::new(
-                                RichText::new(theme::clip(&v, 34))
-                                    .font(mono_font(10.5))
-                                    .color(dim()),
-                            ));
-                        });
-                        ui.add_space(30.0);
-                    }
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    theme::micro(ui, &format!("host  {}", app.machine.host));
+                    ui.add_space(18.0);
+                    theme::micro(ui, &format!("cpu  {}", theme::clip(&app.machine.cpu, 32)));
+                    ui.add_space(18.0);
+                    theme::micro(ui, &format!("gpu  {}", theme::clip(&app.machine.gpu, 22)));
                 });
             });
-            ui.add_space(12.0);
-            theme::ring_sweep(ui, coverage, 150.0, "readiness", app.sweep);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                theme::ring_sweep(ui, coverage, 84.0, "readiness", app.sweep);
+            });
         });
     });
 
