@@ -1,6 +1,6 @@
 [package]
 name = "void-optimizer"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2021"
 description = "VOID // a luxury-grade competitive gaming optimizer"
 license = "MIT"

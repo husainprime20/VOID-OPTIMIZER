@@ -1401,9 +1401,16 @@ pub fn area_chart(p: &egui::Painter, rect: Rect, values: &[f32], color: Color32,
         line.push(*last);
     }
 
-    // fill: two vertices per column, colour at the curve, transparent at the floor
+    // fill: two vertices per column, colour at the curve, transparent at the floor.
+    // Porcelain needs more pigment for the same apparent density — white paper
+    // eats a 12-alpha veil that reads clearly on black.
+    let (fill_a, g1, g2, g3, line_a) = if light() {
+        (112u8, 34u8, 58u8, 96u8, 250u8)
+    } else {
+        (64, 16, 30, 60, 245)
+    };
     let mut mesh = egui::epaint::Mesh::default();
-    let top = a(color, 64);
+    let top = a(color, fill_a);
     let floor = a(color, 0);
     for v in line.iter() {
         mesh.vertices.push(egui::epaint::Vertex {
@@ -1424,7 +1431,7 @@ pub fn area_chart(p: &egui::Painter, rect: Rect, values: &[f32], color: Color32,
     p.add(egui::Shape::mesh(mesh));
 
     // glow: three widening strokes, then the line itself
-    for (w, al) in [(6.0_f32, 16u8), (3.5, 30), (2.0, 60)] {
+    for (w, al) in [(6.0_f32, g1), (3.5, g2), (2.0, g3)] {
         p.add(egui::Shape::line(
             line.clone(),
             Stroke::new(w, a(color, al)),
@@ -1432,7 +1439,7 @@ pub fn area_chart(p: &egui::Painter, rect: Rect, values: &[f32], color: Color32,
     }
     p.add(egui::Shape::line(
         line.clone(),
-        Stroke::new(1.5_f32, a(color, 245)),
+        Stroke::new(1.5_f32, a(color, line_a)),
     ));
 
     // the head: where "now" is
