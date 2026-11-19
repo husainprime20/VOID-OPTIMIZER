@@ -79,6 +79,28 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
+### What's new in 0.9.0 — Instruments
+
+The deck was rebuilt around telemetry, in the language of the reference console:
+grouped rail, instrument cards, live charts, a process table.
+
+* **Four instruments, four hues.** CPU, Memory, Disk and Network each get a card
+  with a vector glyph badge, a large reading, a live area chart — Catmull-Rom
+  smoothed, gradient-filled by mesh, with a glow and a bright head where *now*
+  is — and an average along the floor. Hue carries meaning only: red processor,
+  blue memory, violet volume, green wire.
+* **Real counters, still zero subprocesses.** Disk comes from
+  `GetDiskFreeSpaceExW`; network throughput from `GetIfTable`'s `MIB_IFROW`
+  octet counters (with a `/proc/net/dev` path for Linux); CPU and memory were
+  already kernel reads. Rates are deltas against the previous sample, so a
+  counter reset can't fake a spike.
+* **Top processes** now sits on the dashboard: the same per-PID CPU deltas the
+  Monitor view used, joined against the process table for resident memory.
+* **The rail is a console, not a list.** Stroke-drawn glyphs per view, a `MAIN`
+  group label, an active row that is a pill with a side bar and a chevron, and
+  the account chip at the foot — name, role, and a gear that opens Settings.
+* **Header has a breadcrumb**: a home mark, the view's kicker, then the title.
+
 ### What's new in 0.8.4-0.8.5 — Porcelain
 
 * **The light theme is a real theme now**, not the dark one inverted. The page sits at

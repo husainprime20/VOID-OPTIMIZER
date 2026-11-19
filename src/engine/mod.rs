@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.8.5";
+pub const VERSION: &str = "0.9.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -1450,6 +1450,42 @@ pub fn running_games() -> Vec<(&'static str, &'static str)> {
 
 pub fn cpu_times() -> Vec<(String, u32, u64)> {
     platform::cpu_times()
+}
+
+/// (used %, used GB, total GB) of the system volume, when the OS reports it.
+pub fn disk() -> Option<(f64, f64, f64)> {
+    platform::disk()
+}
+
+/// The previous network sample, so the rate is a delta and not a guess.
+static NET_PREV: std::sync::Mutex<Option<(u64, u64, std::time::Instant)>> =
+    std::sync::Mutex::new(None);
+
+/// (down Mbps, up Mbps) since the previous call.
+pub fn net_rate() -> (f64, f64) {
+    let Some((rx, tx)) = platform::net_counters() else {
+        return (0.0, 0.0);
+    };
+    let now = std::time::Instant::now();
+    let mut slot = match NET_PREV.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let rate = match *slot {
+        Some((prx, ptx, at)) => {
+            let dt = now.saturating_duration_since(at).as_secs_f64().max(0.05);
+            let down = rx.saturating_sub(prx) as f64 * 8.0 / dt / 1_000_000.0;
+            let up = tx.saturating_sub(ptx) as f64 * 8.0 / dt / 1_000_000.0;
+            // a counter reset (adapter replug) shows as a huge spike; ignore it
+            (
+                if down > 100_000.0 { 0.0 } else { down },
+                if up > 100_000.0 { 0.0 } else { up },
+            )
+        }
+        None => (0.0, 0.0),
+    };
+    *slot = Some((rx, tx, now));
+    rate
 }
 
 pub fn processes() -> Vec<(String, u32, f64)> {

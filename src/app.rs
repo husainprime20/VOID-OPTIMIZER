@@ -14,7 +14,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use eframe::egui::{self, Align, Align2, Color32, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{
+    self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2,
+};
 
 use crate::audio::Ambient;
 use crate::engine::{self, Job, Machine, State, Stats, Work};
@@ -70,6 +72,20 @@ impl View {
             View::Monitor => "live telemetry",
             View::Aim => "sensitivity",
             View::Settings => "presets & engine",
+        }
+    }
+    /// The stroke glyph the rail draws for this view.
+    pub fn glyph(self) -> &'static str {
+        match self {
+            View::Dashboard => "home",
+            View::Optimize => "speed",
+            View::Profiles => "stack",
+            View::FreeFire => "crosshair",
+            View::Network => "net",
+            View::Kernel => "chip",
+            View::Monitor => "pulse",
+            View::Aim => "target",
+            View::Settings => "gear",
         }
     }
     pub fn hint(self) -> &'static str {
@@ -172,6 +188,14 @@ pub struct App {
     pub stats: Stats,
     pub cpu_hist: Vec<f32>,
     pub ram_hist: Vec<f32>,
+    /// Instrument series: the volume, and the wire.
+    pub disk_hist: Vec<f32>,
+    pub net_hist: Vec<f32>,
+    /// Latest readings for the instrument cards.
+    pub disk_pct: f32,
+    pub disk_gb: (f64, f64),
+    pub net_down: f32,
+    pub net_up: f32,
     pub search: String,
     pub cat: usize,
     pub risk: u8,
@@ -206,8 +230,6 @@ pub struct App {
     /// Eased cpu / memory percentages for the meters.
     pub cpu_e: f32,
     pub ram_e: f32,
-    /// Gliding rail indicator position.
-    pub nav_y: f32,
     /// 0..1 sweep used as the "ignite" animation while a job runs.
     pub sweep: f32,
     /// When the current job started, for the sweep.
@@ -298,6 +320,12 @@ impl App {
             stats,
             cpu_hist: vec![0.0; 60],
             ram_hist: vec![0.0; 60],
+            disk_hist: Vec::new(),
+            net_hist: Vec::new(),
+            disk_pct: 0.0,
+            disk_gb: (0.0, 0.0),
+            net_down: 0.0,
+            net_up: 0.0,
             search: String::new(),
             cat: 0,
             risk: 0,
@@ -326,7 +354,6 @@ impl App {
             timer_ms: 0.0,
             cpu_e: 0.0,
             ram_e: 0.0,
-            nav_y: -1.0,
             sweep: 1.0,
             job_born: 0.0,
             chain: Vec::new(),
@@ -770,6 +797,30 @@ impl App {
             if self.ram_hist.len() > 80 {
                 self.ram_hist.remove(0);
             }
+            // the volume: read once per second, seeded flat so the chart opens
+            // full instead of growing from the right edge
+            if let Some((pct, used, total)) = engine::disk() {
+                self.disk_pct = pct as f32;
+                self.disk_gb = (used, total);
+            }
+            if self.disk_hist.is_empty() {
+                self.disk_hist = vec![self.disk_pct; 60];
+            }
+            self.disk_hist.push(self.disk_pct);
+            if self.disk_hist.len() > 80 {
+                self.disk_hist.remove(0);
+            }
+            // the wire: a delta against the previous counters
+            let (down, up) = engine::net_rate();
+            self.net_down = down as f32;
+            self.net_up = up as f32;
+            if self.net_hist.is_empty() {
+                self.net_hist = vec![0.0; 60];
+            }
+            self.net_hist.push(self.net_down);
+            if self.net_hist.len() > 80 {
+                self.net_hist.remove(0);
+            }
         }
         if self.view == View::Dashboard && now - self.games_at > 6.0 {
             self.games_at = now;
@@ -802,7 +853,7 @@ impl App {
                 }
             }
         }
-        if self.view == View::Monitor && now - self.cpu_prev_at > 2.0 {
+        if matches!(self.view, View::Monitor | View::Dashboard) && now - self.cpu_prev_at > 2.0 {
             let elapsed = (now - self.cpu_prev_at).clamp(1.0, 6.0);
             let sample = engine::cpu_times();
             let cores = crate::platform::logical_cpus().max(1) as f32;
@@ -825,7 +876,7 @@ impl App {
             self.cpu_prev = sample.iter().map(|(_, pid, t)| (*pid, *t)).collect();
             self.cpu_prev_at = now;
         }
-        if self.view == View::Monitor && now - self.procs_at > 5.0 {
+        if matches!(self.view, View::Monitor | View::Dashboard) && now - self.procs_at > 5.0 {
             self.procs_at = now;
             self.procs = engine::processes();
         }
@@ -905,10 +956,10 @@ impl App {
 
         let tx = tile.right() + 12.0;
         ui.painter().text(
-            Pos2::new(tx, rect.center().y - 3.0),
-            Align2::LEFT_BOTTOM,
+            Pos2::new(tx, rect.center().y - 4.0),
+            Align2::LEFT_CENTER,
             "VOID",
-            title_font(23.0),
+            FontId::new(16.5, label_font().family),
             txt(),
         );
         // the shine: a light sweep that crosses the wordmark and is gone
@@ -938,18 +989,18 @@ impl App {
             a(white(), (70.0 + 150.0 * pulse) as u8),
         );
         ui.painter().text(
-            Pos2::new(tx, rect.center().y + 12.0),
+            Pos2::new(tx, rect.center().y + 11.0),
             Align2::LEFT_CENTER,
-            format!("{}  ·  native", engine::VERSION),
-            mono_font(9.5),
+            format!("{}  ·  pc optimization", engine::VERSION),
+            mono_font(8.5),
             ghost(),
         );
 
-        ui.add_space(12.0);
+        ui.add_space(14.0);
         theme::hairline(ui);
+        ui.add_space(12.0);
+        theme::micro(ui, "main");
         ui.add_space(10.0);
-        theme::micro(ui, "workspace");
-        ui.add_space(6.0);
 
         for (i, v) in VIEWS.iter().enumerate() {
             if self.nav_item(ui, *v, i + 1, now) {
@@ -957,15 +1008,6 @@ impl App {
             }
             ui.add_space(1.0);
         }
-        if self.nav_y > 0.0 {
-            let x = ui.min_rect().left();
-            let bar = Rect::from_min_max(
-                Pos2::new(x, self.nav_y),
-                Pos2::new(x + 1.5, self.nav_y + 16.0),
-            );
-            ui.painter().rect_filled(bar, 1.0, white());
-        }
-
         // ── bottom: sound, engine state ──
         let need = 214.0;
         let space = ui.available_height() - need;
@@ -1062,30 +1104,94 @@ impl App {
             micro_font(),
             faint(),
         );
+
+        // ── the account: who this deck belongs to ──
+        ui.add_space(12.0);
+        let (crect, cresp) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::click());
+        let hover = ui.ctx().animate_bool(cresp.id, cresp.hovered());
+        if hover > 0.01 {
+            ui.painter().rect_filled(crect, 10.0, a(white(), (hover * 8.0) as u8));
+        }
+        let av = Pos2::new(crect.left() + 15.0, crect.center().y);
+        ui.painter().circle_filled(
+            av,
+            14.0,
+            a(white(), if theme::light() { 16 } else { 20 }),
+        );
+        ui.painter()
+            .circle_stroke(av, 14.0, Stroke::new(1.0_f32, theme::rim()));
+        let who = self.machine.user.clone();
+        let initial = who
+            .chars()
+            .next()
+            .unwrap_or('v')
+            .to_uppercase()
+            .to_string();
+        ui.painter().text(
+            av,
+            Align2::CENTER_CENTER,
+            initial,
+            FontId::new(12.0, label_font().family),
+            txt(),
+        );
+        ui.painter().text(
+            Pos2::new(av.x + 24.0, crect.center().y - 6.0),
+            Align2::LEFT_CENTER,
+            theme::clip(&who, 16),
+            FontId::new(11.5, label_font().family),
+            txt(),
+        );
+        ui.painter().text(
+            Pos2::new(av.x + 24.0, crect.center().y + 7.0),
+            Align2::LEFT_CENTER,
+            if self.machine.admin {
+                "administrator"
+            } else {
+                "standard user"
+            },
+            mono_font(8.5),
+            ghost(),
+        );
+        theme::glyph(
+            ui.painter(),
+            Pos2::new(crect.right() - 12.0, crect.center().y),
+            "gear",
+            if cresp.hovered() { dim() } else { ghost() },
+            0.72,
+        );
+        if cresp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if cresp.clicked() {
+            self.set_view(View::Settings, now);
+        }
     }
 
     fn nav_item(&mut self, ui: &mut Ui, v: View, index: usize, now: f64) -> bool {
-        let h = 32.0;
+        let h = 34.0;
         let w = ui.available_width();
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
         let active = self.view == v;
         let t = ui.ctx().animate_bool(resp.id, active || resp.hovered());
         let _ = now;
+        let _ = index;
 
         if active {
-            ui.painter().rect_filled(rect, 7.0, a(white(), 9));
-            // the indicator glides between items instead of snapping
-            let ty = rect.top() + 8.0;
-            if self.nav_y < 0.0 || !self.state.motion {
-                self.nav_y = ty;
-            } else {
-                self.nav_y += (ty - self.nav_y) * 0.22;
-                if (ty - self.nav_y).abs() < 0.3 {
-                    self.nav_y = ty;
-                }
-            }
+            ui.painter().rect_filled(
+                rect,
+                9.0,
+                a(white(), if theme::light() { 10 } else { 16 }),
+            );
+            ui.painter()
+                .rect_stroke(rect, 9.0, Stroke::new(1.0_f32, theme::rim()));
+            let bar = Rect::from_min_size(
+                Pos2::new(rect.left(), rect.center().y - 7.0),
+                Vec2::new(2.0, 14.0),
+            );
+            ui.painter().rect_filled(bar, 1.0, white());
         } else if t > 0.01 {
-            ui.painter().rect_filled(rect, 7.0, a(white(), (t * 5.0) as u8));
+            ui.painter().rect_filled(rect, 9.0, a(white(), (t * 8.0) as u8));
         }
 
         let fg = if active {
@@ -1095,20 +1201,39 @@ impl App {
         } else {
             faint()
         };
+        theme::glyph(
+            ui.painter(),
+            Pos2::new(rect.left() + 18.0, rect.center().y),
+            v.glyph(),
+            fg,
+            0.78,
+        );
         ui.painter().text(
-            Pos2::new(rect.left() + 13.0, rect.center().y),
+            Pos2::new(rect.left() + 34.0, rect.center().y),
             Align2::LEFT_CENTER,
             v.title(),
-            label_font(),
+            FontId::new(12.0, label_font().family),
             fg,
         );
-        ui.painter().text(
-            Pos2::new(rect.right() - 10.0, rect.center().y),
-            Align2::RIGHT_CENTER,
-            format!("{:02}", index),
-            mono_font(9.0),
-            if active { dim() } else { ghost() },
-        );
+        if active {
+            let c = Pos2::new(rect.right() - 14.0, rect.center().y);
+            ui.painter().add(egui::Shape::line(
+                vec![
+                    Pos2::new(c.x - 2.0, c.y - 3.5),
+                    Pos2::new(c.x + 1.5, c.y),
+                    Pos2::new(c.x - 2.0, c.y + 3.5),
+                ],
+                Stroke::new(1.2_f32, dim()),
+            ));
+        } else {
+            ui.painter().text(
+                Pos2::new(rect.right() - 12.0, rect.center().y),
+                Align2::RIGHT_CENTER,
+                format!("{:02}", index),
+                mono_font(8.5),
+                ghost(),
+            );
+        }
         if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
@@ -1122,15 +1247,23 @@ impl App {
         let appear = (age / 0.22).clamp(0.0, 1.0);
         let slide = (1.0 - appear) * 8.0;
 
+        // breadcrumb: home, then where you are
+        theme::glyph(
+            ui.painter(),
+            Pos2::new(rect.left() + 6.0, rect.top() + 12.0 + slide),
+            "home",
+            ghost(),
+            0.62,
+        );
         ui.painter().text(
-            Pos2::new(rect.left(), rect.top() + 8.0 + slide),
-            Align2::LEFT_TOP,
-            tracked(self.view.kicker()),
+            Pos2::new(rect.left() + 18.0, rect.top() + 12.0 + slide),
+            Align2::LEFT_CENTER,
+            format!("/  {}", tracked(self.view.kicker())),
             micro_font(),
             ghost(),
         );
         ui.painter().text(
-            Pos2::new(rect.left(), rect.top() + 22.0 + slide * 1.6),
+            Pos2::new(rect.left(), rect.top() + 24.0 + slide * 1.6),
             Align2::LEFT_TOP,
             self.view.title(),
             num_font(25.0),

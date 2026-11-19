@@ -3,7 +3,9 @@
 pub mod catalog_views;
 pub mod live;
 
-use eframe::egui::{self, Align, Align2, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{
+    self, Align, Align2, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2,
+};
 
 use crate::app::{Action, App, Modal, View};
 use crate::engine::{self, catalog};
@@ -165,25 +167,12 @@ pub fn by_category(app: &mut App, ui: &mut Ui, cat: &'static str) {
     tweak_stack(app, ui, &ids);
 }
 
-fn stat_card(ui: &mut Ui, label: &str, value: String, unit: &str, hist: &[f32], max: f32) {
-    theme::card(ui, |ui| {
-        ui.set_width(ui.available_width());
-        ui.set_min_height(98.0);
-        theme::micro(ui, label);
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.add(egui::Label::new(
-                RichText::new(value).font(num_font(28.0)).color(txt()),
-            ));
-            if !unit.is_empty() {
-                ui.add(egui::Label::new(
-                    RichText::new(unit).font(label_font()).color(faint()),
-                ));
-            }
-        });
-        ui.add_space(6.0);
-        theme::spark(ui, hist, Vec2::new(ui.available_width(), 34.0), max);
-    });
+/// Mean of a series, for the "average" line under every instrument.
+fn mean(values: &[f32]) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.iter().sum::<f32>() / values.len() as f32
 }
 
 // ── dashboard ────────────────────────────────────────────────────────────────
@@ -284,95 +273,195 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
 
     ui.add_space(14.0);
 
-    let cols = 4;
+    // ── instruments ─────────────────────────────────────────────────────────
+    // Four resources, four hues, four live series. The chart is the point: one
+    // look tells you what the machine is doing right now, and what it was doing
+    // a minute ago.
     let w = ui.available_width();
-    let gap = 10.0;
-    let cw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
+    let gap = 12.0;
+    let cw = (w - gap) * 0.5;
+    let card_h = 194.0;
+    let cpu_avg = mean(&app.cpu_hist);
+    let ram_avg = mean(&app.ram_hist);
+    let disk_avg = mean(&app.disk_hist);
+    let net_peak = app.net_hist.iter().cloned().fold(0.0_f32, f32::max);
+    let (disk_used, disk_total) = app.disk_gb;
+    let disk_caption = if disk_total > 0.0 {
+        format!("volume c: · {:.0}/{:.0} gb", disk_used, disk_total)
+    } else {
+        "volume · unavailable".to_string()
+    };
+    let net_max = if net_peak < 8.0 { 8.0 } else { net_peak * 1.25 };
+
     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = gap;
-        ui.allocate_ui_with_layout(
-            Vec2::new(cw, 0.0),
-            Layout::top_down(Align::Min),
-            |ui| {
-                ui.set_width(cw);
-                stat_card(
-                    ui,
-                    "cpu load",
-                    format!("{:.0}", app.cpu_e),
-                    "%",
-                    &app.cpu_hist,
-                    100.0,
-                );
-            },
-        );
-        ui.allocate_ui_with_layout(
-            Vec2::new(cw, 0.0),
-            Layout::top_down(Align::Min),
-            |ui| {
-                ui.set_width(cw);
-                stat_card(
-                    ui,
-                    "memory",
-                    format!("{:.0}", app.stats.ram),
-                    "%",
-                    &app.ram_hist,
-                    100.0,
-                );
-            },
-        );
-        ui.allocate_ui_with_layout(
-            Vec2::new(cw, 0.0),
-            Layout::top_down(Align::Min),
-            |ui| {
-                ui.set_width(cw);
-                theme::card(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.set_min_height(98.0);
-                    theme::micro(ui, "sleep jitter");
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
-                        let (v, u) = match &app.bench {
-                            Some(b) => (format!("{:.2}", b.jitter), "ms"),
-                            None => ("—".to_string(), ""),
-                        };
-                        ui.add(egui::Label::new(
-                            RichText::new(v).font(num_font(28.0)).color(txt()),
-                        ));
-                        ui.add(egui::Label::new(
-                            RichText::new(u).font(label_font()).color(faint()),
-                        ));
-                    });
-                    ui.add_space(6.0);
-                    if theme::button(ui, "run bench", false).clicked() {
-                        app.run_action(ui.ctx(), Action::Bench);
-                    }
-                });
-            },
-        );
-        ui.allocate_ui_with_layout(
-            Vec2::new(cw, 0.0),
-            Layout::top_down(Align::Min),
-            |ui| {
-                ui.set_width(cw);
-                theme::card(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.set_min_height(98.0);
-                    theme::micro(ui, "session");
-                    ui.add_space(4.0);
-                    let up = app.started.elapsed().as_secs();
-                    ui.add(egui::Label::new(
-                        RichText::new(format!("{:02}:{:02}", up / 60, up % 60))
-                            .font(num_font(28.0))
-                            .color(txt()),
-                    ));
-                    ui.add_space(6.0);
-                    theme::micro(
-                        ui,
-                        &format!("{} ops · {} in journal", app.state.ops, app.state.log.len()),
-                    );
-                });
-            },
-        );
+        ui.allocate_ui_with_layout(Vec2::new(cw, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_width(cw);
+            theme::metric_card(
+                ui,
+                "cpu",
+                "CPU",
+                "usage monitor",
+                format!("{:.0}", app.cpu_e),
+                "%",
+                theme::hue_cpu(),
+                &app.cpu_hist,
+                100.0,
+                "average",
+                format!("{:.0}%", cpu_avg),
+                card_h,
+            );
+            ui.add_space(gap);
+            theme::metric_card(
+                ui,
+                "disk",
+                "Disk",
+                &disk_caption,
+                if disk_total > 0.0 {
+                    format!("{:.0}", app.disk_pct)
+                } else {
+                    "--".to_string()
+                },
+                if disk_total > 0.0 { "%" } else { "" },
+                theme::hue_disk(),
+                &app.disk_hist,
+                100.0,
+                "average",
+                if disk_total > 0.0 {
+                    format!("{:.0}%", disk_avg)
+                } else {
+                    "--".to_string()
+                },
+                card_h,
+            );
+        });
+        ui.allocate_ui_with_layout(Vec2::new(cw, 0.0), Layout::top_down(Align::Min), |ui| {
+            ui.set_width(cw);
+            theme::metric_card(
+                ui,
+                "mem",
+                "Memory",
+                "usage monitor",
+                format!("{:.0}", app.ram_e),
+                "%",
+                theme::hue_mem(),
+                &app.ram_hist,
+                100.0,
+                "average",
+                format!("{:.0}%", ram_avg),
+                card_h,
+            );
+            ui.add_space(gap);
+            theme::metric_card(
+                ui,
+                "net",
+                "Network",
+                "throughput monitor",
+                format!("{:.1}", app.net_down),
+                "Mbps",
+                theme::hue_net(),
+                &app.net_hist,
+                net_max,
+                "upload",
+                format!("{:.1} Mbps", app.net_up),
+                card_h,
+            );
+        });
+    });
+
+    // ── who is eating the machine ───────────────────────────────────────────
+    ui.add_space(14.0);
+    let mut rows: Vec<(String, f32, f64)> = app
+        .thieves
+        .iter()
+        .take(6)
+        .map(|(name, pid, cpu)| {
+            let mem = app
+                .procs
+                .iter()
+                .find(|row| row.1 == *pid)
+                .map(|row| row.2)
+                .unwrap_or(0.0);
+            (name.trim_end_matches(".exe").to_string(), *cpu, mem)
+        })
+        .collect();
+    if rows.is_empty() {
+        rows = app
+            .procs
+            .iter()
+            .take(5)
+            .map(|(name, _, mem)| (name.trim_end_matches(".exe").to_string(), 0.0, *mem))
+            .collect();
+    }
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "top processes");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                theme::micro(ui, "cpu    memory");
+            });
+        });
+        ui.add_space(8.0);
+        if rows.is_empty() {
+            ui.add(egui::Label::new(
+                RichText::new("Sampling the process table...").font(body_font()).color(faint()),
+            ));
+        }
+        for (name, cpu, mem) in rows.iter() {
+            let (r, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::hover());
+            let p = ui.painter();
+            let badge = Rect::from_min_size(
+                Pos2::new(r.left(), r.center().y - 10.0),
+                Vec2::splat(20.0),
+            );
+            p.rect_filled(badge, 6.0, a(white(), if theme::light() { 20 } else { 14 }));
+            let initial = name
+                .chars()
+                .next()
+                .unwrap_or('?')
+                .to_uppercase()
+                .to_string();
+            p.text(
+                badge.center(),
+                Align2::CENTER_CENTER,
+                initial,
+                FontId::new(9.5, label_font().family),
+                dim(),
+            );
+            p.text(
+                Pos2::new(badge.right() + 10.0, r.center().y),
+                Align2::LEFT_CENTER,
+                theme::clip(name, 34),
+                mono_font(10.5),
+                dim(),
+            );
+            p.text(
+                Pos2::new(r.right() - 118.0, r.center().y),
+                Align2::RIGHT_CENTER,
+                format!("{:.1}% cpu", cpu),
+                mono_font(10.0),
+                if *cpu > 4.0 { txt() } else { ghost() },
+            );
+            p.text(
+                Pos2::new(r.right(), r.center().y),
+                Align2::RIGHT_CENTER,
+                if *mem > 0.0 {
+                    format!("{:.0} mb", mem)
+                } else {
+                    "—".to_string()
+                },
+                mono_font(10.0),
+                ghost(),
+            );
+            p.line_segment(
+                [
+                    Pos2::new(r.left(), r.bottom()),
+                    Pos2::new(r.right(), r.bottom()),
+                ],
+                Stroke::new(1.0_f32, a(white(), 8)),
+            );
+        }
     });
 
     ui.add_space(14.0);

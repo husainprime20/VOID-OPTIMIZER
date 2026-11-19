@@ -1146,3 +1146,424 @@ pub fn ink_light() -> Color32 {
         Color32::WHITE
     }
 }
+
+// ── instruments ──────────────────────────────────────────────────────────────
+// The reference for this block is a telemetry deck: one instrument per
+// resource, each with its own hue, a big reading, and a live area chart that
+// glows against the glass. The hue *is* the meaning — red is the CPU, blue is
+// memory, violet is the volume, green is the wire — so the monochrome rule
+// still holds everywhere else on the page.
+
+pub fn hue_cpu() -> Color32 {
+    pick((255, 92, 92), (206, 54, 54))
+}
+pub fn hue_mem() -> Color32 {
+    pick((86, 141, 255), (46, 100, 206))
+}
+pub fn hue_disk() -> Color32 {
+    pick((168, 122, 255), (122, 74, 206))
+}
+pub fn hue_net() -> Color32 {
+    pick((62, 219, 132), (20, 148, 88))
+}
+
+/// The instrument surface: a hair more opaque than a glass card, so a chart
+/// never has to compete with the band field behind it.
+pub fn surface(ui: &Ui, r: Rect, rounding: f32) {
+    let fill = if light() {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 240)
+    } else {
+        Color32::from_rgba_unmultiplied(12, 12, 15, 240)
+    };
+    ui.painter().rect_filled(r, rounding, fill);
+    ui.painter()
+        .rect_stroke(r, rounding, Stroke::new(1.0_f32, rim()));
+    top_highlight(ui.painter(), r, rounding);
+    spotlight(ui, r, rounding);
+}
+
+/// A one-stroke glyph, drawn from vectors — no icon font, no bitmaps, and it
+/// inherits whatever colour the caller is using.
+pub fn glyph(p: &egui::Painter, c: Pos2, kind: &str, color: Color32, s: f32) {
+    let w = Stroke::new(1.3_f32, color);
+    let box_ = |x: f32, y: f32, ww: f32, hh: f32| {
+        Rect::from_center_size(Pos2::new(c.x + x * s, c.y + y * s), Vec2::new(ww * s, hh * s))
+    };
+    match kind {
+        "cpu" => {
+            p.rect_stroke(box_(0.0, 0.0, 9.0, 9.0), 2.0, w);
+            p.rect_filled(box_(0.0, 0.0, 3.0, 3.0), 0.8, color);
+            for k in [-3.0_f32, 0.0, 3.0] {
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + k * s, c.y - 4.5 * s),
+                        Pos2::new(c.x + k * s, c.y - 6.5 * s),
+                    ],
+                    w,
+                );
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + k * s, c.y + 4.5 * s),
+                        Pos2::new(c.x + k * s, c.y + 6.5 * s),
+                    ],
+                    w,
+                );
+            }
+        }
+        "mem" => {
+            for (i, dx) in [-4.0_f32, 0.0, 4.0].iter().enumerate() {
+                let h = [4.0_f32, 8.0, 6.0][i];
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + dx * s, c.y + 5.0 * s),
+                        Pos2::new(c.x + dx * s, c.y + (5.0 - h) * s),
+                    ],
+                    w,
+                );
+            }
+            p.line_segment(
+                [
+                    Pos2::new(c.x - 6.0 * s, c.y + 6.0 * s),
+                    Pos2::new(c.x + 6.0 * s, c.y + 6.0 * s),
+                ],
+                w,
+            );
+        }
+        "disk" => {
+            p.rect_stroke(box_(0.0, 0.0, 12.0, 9.0), 2.5, w);
+            p.line_segment(
+                [
+                    Pos2::new(c.x - 5.0 * s, c.y + 2.0 * s),
+                    Pos2::new(c.x + 5.0 * s, c.y + 2.0 * s),
+                ],
+                w,
+            );
+            p.circle_filled(Pos2::new(c.x + 3.5 * s, c.y + 3.5 * s), 0.9 * s, color);
+        }
+        "net" => {
+            for (i, r) in [2.5_f32, 5.0, 7.5].iter().enumerate() {
+                let alpha = if i == 0 { 255u8 } else { 185u8 };
+                p.circle_stroke(
+                    Pos2::new(c.x, c.y + 4.0 * s),
+                    r * s,
+                    Stroke::new(1.2_f32, a(color, alpha)),
+                );
+            }
+            p.circle_filled(Pos2::new(c.x, c.y + 4.0 * s), 1.2 * s, color);
+        }
+        "speed" => {
+            p.add(egui::Shape::line(
+                vec![
+                    Pos2::new(c.x - 4.5 * s, c.y - 6.0 * s),
+                    Pos2::new(c.x + 1.0 * s, c.y - 1.0 * s),
+                    Pos2::new(c.x - 1.0 * s, c.y + 1.0 * s),
+                    Pos2::new(c.x + 4.5 * s, c.y + 6.0 * s),
+                ],
+                w,
+            ));
+        }
+        "stack" => {
+            for i in 0..3 {
+                let y = -3.5 + i as f32 * 3.5;
+                p.line_segment(
+                    [
+                        Pos2::new(c.x - 5.5 * s, c.y + y * s),
+                        Pos2::new(c.x + 5.5 * s, c.y + y * s),
+                    ],
+                    Stroke::new(1.3_f32, a(color, 255 - i as u8 * 55)),
+                );
+            }
+        }
+        "crosshair" => {
+            p.circle_stroke(c, 5.5 * s, w);
+            p.circle_filled(c, 1.2 * s, color);
+            for (dx, dy) in [(0.0_f32, -1.0_f32), (0.0, 1.0), (-1.0, 0.0), (1.0, 0.0)] {
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + dx * 5.5 * s, c.y + dy * 5.5 * s),
+                        Pos2::new(c.x + dx * 7.5 * s, c.y + dy * 7.5 * s),
+                    ],
+                    w,
+                );
+            }
+        }
+        "chip" => {
+            p.rect_stroke(box_(0.0, 0.0, 8.0, 8.0), 1.5, w);
+            for k in [-2.0_f32, 2.0] {
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + k * s, c.y - 4.0 * s),
+                        Pos2::new(c.x + k * s, c.y - 6.0 * s),
+                    ],
+                    w,
+                );
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + k * s, c.y + 4.0 * s),
+                        Pos2::new(c.x + k * s, c.y + 6.0 * s),
+                    ],
+                    w,
+                );
+            }
+        }
+        "pulse" => {
+            p.add(egui::Shape::line(
+                vec![
+                    Pos2::new(c.x - 7.0 * s, c.y),
+                    Pos2::new(c.x - 3.0 * s, c.y),
+                    Pos2::new(c.x - 1.0 * s, c.y - 5.0 * s),
+                    Pos2::new(c.x + 1.5 * s, c.y + 5.0 * s),
+                    Pos2::new(c.x + 3.5 * s, c.y),
+                    Pos2::new(c.x + 7.0 * s, c.y),
+                ],
+                w,
+            ));
+        }
+        "target" => {
+            p.circle_stroke(c, 6.5 * s, w);
+            p.circle_stroke(c, 3.2 * s, w);
+            p.circle_filled(c, 1.1 * s, color);
+        }
+        "gear" => {
+            p.circle_stroke(c, 4.5 * s, w);
+            for i in 0..8 {
+                let a0 = i as f32 * std::f32::consts::TAU / 8.0;
+                let (sn, cs) = a0.sin_cos();
+                p.line_segment(
+                    [
+                        Pos2::new(c.x + cs * 5.5 * s, c.y + sn * 5.5 * s),
+                        Pos2::new(c.x + cs * 7.2 * s, c.y + sn * 7.2 * s),
+                    ],
+                    w,
+                );
+            }
+        }
+        "home" => {
+            p.add(egui::Shape::line(
+                vec![
+                    Pos2::new(c.x - 6.0 * s, c.y - 0.5 * s),
+                    Pos2::new(c.x, c.y - 6.0 * s),
+                    Pos2::new(c.x + 6.0 * s, c.y - 0.5 * s),
+                ],
+                w,
+            ));
+            p.rect_stroke(box_(0.0, 2.5, 8.0, 6.0), 1.0, w);
+        }
+        _ => {
+            p.circle_stroke(c, 5.0 * s, w);
+        }
+    }
+}
+
+/// Catmull-Rom: one sample in, a smooth curve out. Charts must not stair-step.
+fn catmull(p0: Pos2, p1: Pos2, p2: Pos2, p3: Pos2, t: f32) -> Pos2 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    let f = |a: f32, b: f32, c: f32, d: f32| {
+        0.5 * ((2.0 * b) + (-a + c) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t2
+            + (-a + 3.0 * b - 3.0 * c + d) * t3)
+    };
+    Pos2::new(
+        f(p0.x, p1.x, p2.x, p3.x),
+        f(p0.y, p1.y, p2.y, p3.y),
+    )
+}
+
+/// A live area chart: gradient fill (mesh, so the alpha fades with height), a
+/// glowing stroke, and a bright head where the newest sample lands.
+pub fn area_chart(p: &egui::Painter, rect: Rect, values: &[f32], color: Color32, max: f32) {
+    if values.len() < 2 || rect.width() < 8.0 || rect.height() < 6.0 {
+        return;
+    }
+    let max = if max <= 0.001 { 1.0 } else { max };
+    let n = values.len();
+    let pts: Vec<Pos2> = values
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let x = rect.left() + rect.width() * (i as f32 / (n - 1) as f32);
+            let y = rect.bottom() - (v / max).clamp(0.0, 1.0) * rect.height() * 0.88;
+            Pos2::new(x, y)
+        })
+        .collect();
+
+    let mut line: Vec<Pos2> = Vec::with_capacity(n * 4);
+    for i in 0..n - 1 {
+        let p0 = if i == 0 { pts[0] } else { pts[i - 1] };
+        let p1 = pts[i];
+        let p2 = pts[i + 1];
+        let p3 = if i + 2 < n { pts[i + 2] } else { p2 };
+        for s in 0..4 {
+            line.push(catmull(p0, p1, p2, p3, s as f32 / 4.0));
+        }
+    }
+    if let Some(last) = pts.last() {
+        line.push(*last);
+    }
+
+    // fill: two vertices per column, colour at the curve, transparent at the floor
+    let mut mesh = egui::epaint::Mesh::default();
+    let top = a(color, 64);
+    let floor = a(color, 0);
+    for v in line.iter() {
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: *v,
+            uv: egui::epaint::WHITE_UV,
+            color: top,
+        });
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: Pos2::new(v.x, rect.bottom()),
+            uv: egui::epaint::WHITE_UV,
+            color: floor,
+        });
+    }
+    for i in 0..line.len().saturating_sub(1) {
+        let k = (i * 2) as u32;
+        mesh.indices.extend_from_slice(&[k, k + 1, k + 2, k + 1, k + 3, k + 2]);
+    }
+    p.add(egui::Shape::mesh(mesh));
+
+    // glow: three widening strokes, then the line itself
+    for (w, al) in [(6.0_f32, 16u8), (3.5, 30), (2.0, 60)] {
+        p.add(egui::Shape::line(
+            line.clone(),
+            Stroke::new(w, a(color, al)),
+        ));
+    }
+    p.add(egui::Shape::line(
+        line.clone(),
+        Stroke::new(1.5_f32, a(color, 245)),
+    ));
+
+    // the head: where "now" is
+    if let Some(head) = line.last() {
+        p.circle_filled(*head, 5.0, a(color, 34));
+        p.circle_filled(*head, 2.6, a(color, 255));
+        p.circle_filled(*head, 1.2, Color32::WHITE);
+    }
+
+    // floor grid: two hairlines, so the chart has a baseline to sit on
+    p.line_segment(
+        [
+            Pos2::new(rect.left(), rect.bottom()),
+            Pos2::new(rect.right(), rect.bottom()),
+        ],
+        Stroke::new(1.0_f32, a(white(), 14)),
+    );
+}
+
+/// One instrument card: badge + name + reading on top, live chart under it,
+/// average along the floor. Everything is painted, so the card keeps its exact
+/// geometry at any width.
+pub fn metric_card(
+    ui: &mut Ui,
+    kind: &str,
+    title: &str,
+    sub: &str,
+    value: String,
+    unit: &str,
+    color: Color32,
+    values: &[f32],
+    max: f32,
+    footer: &str,
+    footer_v: String,
+    height: f32,
+) {
+    let w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, height), Sense::hover());
+    surface(ui, rect, 14.0);
+    let t = ui.ctx().animate_bool(resp.id, resp.hovered());
+    if t > 0.01 {
+        let hot = if light() {
+            a(ink_light(), (96.0 + 60.0 * t) as u8)
+        } else {
+            a(white(), (30.0 + 34.0 * t) as u8)
+        };
+        ui.painter()
+            .rect_stroke(rect, 14.0, Stroke::new(1.0_f32, hot));
+    }
+
+    let p = ui.painter();
+    let pad = 16.0;
+    // badge
+    let badge = Rect::from_min_size(
+        Pos2::new(rect.left() + pad, rect.top() + pad),
+        Vec2::splat(26.0),
+    );
+    p.rect_filled(badge, 8.0, a(color, 30));
+    p.rect_stroke(badge, 8.0, Stroke::new(1.0_f32, a(color, 70)));
+    glyph(p, badge.center(), kind, color, 0.85);
+
+    // name + subtitle
+    p.text(
+        Pos2::new(badge.right() + 10.0, badge.center().y - 5.0),
+        Align2::LEFT_CENTER,
+        title,
+        FontId::new(12.5, label_font().family),
+        txt(),
+    );
+    p.text(
+        Pos2::new(badge.right() + 10.0, badge.center().y + 7.0),
+        Align2::LEFT_CENTER,
+        sub,
+        mono_font(9.0),
+        ghost(),
+    );
+
+    // reading, right aligned
+    let unit_w = if unit.is_empty() {
+        0.0
+    } else {
+        ui.painter()
+            .layout_no_wrap(unit.to_string(), label_font(), faint())
+            .size()
+            .x
+            + 4.0
+    };
+    p.text(
+        Pos2::new(rect.right() - pad - unit_w, badge.center().y),
+        Align2::RIGHT_CENTER,
+        value,
+        num_font(21.0),
+        txt(),
+    );
+    if !unit.is_empty() {
+        p.text(
+            Pos2::new(rect.right() - pad, badge.center().y + 1.0),
+            Align2::RIGHT_CENTER,
+            unit,
+            mono_font(10.0),
+            faint(),
+        );
+    }
+
+    // chart
+    let chart = Rect::from_min_max(
+        Pos2::new(rect.left() + pad, badge.bottom() + 16.0),
+        Pos2::new(rect.right() - pad, rect.bottom() - 30.0),
+    );
+    area_chart(p, chart, values, color, max);
+
+    // floor: average
+    p.line_segment(
+        [
+            Pos2::new(rect.left() + pad, rect.bottom() - 26.0),
+            Pos2::new(rect.right() - pad, rect.bottom() - 26.0),
+        ],
+        Stroke::new(1.0_f32, a(white(), 12)),
+    );
+    p.text(
+        Pos2::new(rect.left() + pad, rect.bottom() - 13.0),
+        Align2::LEFT_CENTER,
+        footer,
+        mono_font(9.5),
+        ghost(),
+    );
+    p.text(
+        Pos2::new(rect.right() - pad, rect.bottom() - 13.0),
+        Align2::RIGHT_CENTER,
+        footer_v,
+        mono_font(10.0),
+        dim(),
+    );
+}

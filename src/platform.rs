@@ -1479,6 +1479,12 @@ mod kern {
             user: *mut super::FileTime,
         ) -> i32;
         pub fn GlobalMemoryStatusEx(mem: *mut super::MemStatusEx) -> i32;
+        pub fn GetDiskFreeSpaceExW(
+            path: *const u16,
+            available: *mut u64,
+            total: *mut u64,
+            free: *mut u64,
+        ) -> i32;
         pub fn GetProcessTimes(
             handle: *mut std::ffi::c_void,
             creation: *mut super::FileTime,
@@ -1569,4 +1575,148 @@ pub fn ram() -> (f64, f64) {
     }
     let used = if total > avail { total - avail } else { 0.0 };
     (total, used)
+}
+
+// ── capacity & throughput ────────────────────────────────────────────────────
+// Two more kernel reads, both O(1): the volume VOID runs from, and the byte
+// counters the network stack already keeps. No PowerShell, no `df`, no shell —
+// and no sleeping on the UI thread, because the caller keeps the delta.
+
+/// (used %, used GB, total GB) of the system volume.
+#[cfg(windows)]
+pub fn disk() -> Option<(f64, f64, f64)> {
+    let mut root: Vec<u16> = "C:\\".encode_utf16().collect();
+    root.push(0);
+    let mut available: u64 = 0;
+    let mut total: u64 = 0;
+    let mut free: u64 = 0;
+    let ok = unsafe {
+        kern::GetDiskFreeSpaceExW(root.as_ptr(), &mut available, &mut total, &mut free)
+    };
+    if ok == 0 || total == 0 {
+        return None;
+    }
+    let gb = 1024.0 * 1024.0 * 1024.0;
+    let used = total.saturating_sub(free) as f64;
+    Some((
+        (used / total as f64 * 100.0).clamp(0.0, 100.0),
+        used / gb,
+        total as f64 / gb,
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn disk() -> Option<(f64, f64, f64)> {
+    None
+}
+
+/// `MIB_IFROW` from `ipifcons.h`, byte for byte. The table hands us these rows
+/// back to back after a single `u32` count, so the size of this struct *is* the
+/// stride — it must stay exact.
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[allow(dead_code)]
+struct IfRow {
+    name: [u16; 256],
+    index: u32,
+    kind: u32,
+    mtu: u32,
+    speed: u32,
+    phys_len: u32,
+    phys: [u8; 8],
+    admin: u32,
+    oper: u32,
+    last_change: u32,
+    in_octets: u32,
+    out_octets: u32,
+    in_ucast: u32,
+    in_nucast: u32,
+    in_discards: u32,
+    in_errors: u32,
+    in_unknown: u32,
+    out_ucast: u32,
+    out_nucast: u32,
+    out_discards: u32,
+    out_errors: u32,
+    out_qlen: u32,
+    descr_len: u32,
+    descr: [u8; 256],
+}
+
+#[cfg(windows)]
+mod ip {
+    #[link(name = "iphlpapi")]
+    extern "system" {
+        pub fn GetIfTable(table: *mut u8, size: *mut u32, order: i32) -> u32;
+    }
+}
+
+/// Cumulative (received, sent) bytes across every connected interface.
+#[cfg(windows)]
+pub fn net_counters() -> Option<(u64, u64)> {
+    let mut size: u32 = 0;
+    unsafe {
+        // first call sizes the table and is expected to fail
+        ip::GetIfTable(std::ptr::null_mut(), &mut size, 0);
+    }
+    if size == 0 {
+        return None;
+    }
+    // slack, because interfaces can appear between the two calls
+    size = size.saturating_add(4096);
+    let words = (size as usize / 4) + 64;
+    let mut buf: Vec<u32> = vec![0u32; words];
+    let rc = unsafe { ip::GetIfTable(buf.as_mut_ptr() as *mut u8, &mut size, 0) };
+    if rc != 0 {
+        return None;
+    }
+    let rows = buf[0] as usize;
+    let stride = std::mem::size_of::<IfRow>();
+    let limit = buf.len() * 4;
+    let base = buf.as_ptr() as *const u8;
+    let mut rx: u64 = 0;
+    let mut tx: u64 = 0;
+    for i in 0..rows {
+        let off = 4 + i * stride;
+        if off + stride > limit {
+            break;
+        }
+        let row: IfRow = unsafe { std::ptr::read_unaligned(base.add(off) as *const IfRow) };
+        // 1 == connected; loopback and unplugged adapters are skipped
+        if row.oper == 1 {
+            rx = rx.saturating_add(row.in_octets as u64);
+            tx = tx.saturating_add(row.out_octets as u64);
+        }
+    }
+    if rx == 0 && tx == 0 {
+        None
+    } else {
+        Some((rx, tx))
+    }
+}
+
+/// Same counters, read from procfs — so the Linux build (and the screenshot CI)
+/// shows live numbers instead of a dead card.
+#[cfg(not(windows))]
+pub fn net_counters() -> Option<(u64, u64)> {
+    let text = std::fs::read_to_string("/proc/net/dev").ok()?;
+    let mut rx: u64 = 0;
+    let mut tx: u64 = 0;
+    for line in text.lines().skip(2) {
+        let Some((_, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let f: Vec<&str> = rest.split_whitespace().collect();
+        if f.len() < 9 {
+            continue;
+        }
+        rx = rx.saturating_add(f[0].parse::<u64>().unwrap_or(0));
+        tx = tx.saturating_add(f[8].parse::<u64>().unwrap_or(0));
+    }
+    if rx == 0 && tx == 0 {
+        None
+    } else {
+        Some((rx, tx))
+    }
 }
