@@ -789,6 +789,16 @@ impl App {
             self.polled_at = now;
             self.stats = engine::sample();
             self.timer_ms = engine::timer_resolution_ms().unwrap_or(0.0) as f32;
+            // seed with the current reading: a chart that opens half empty reads
+            // like a bug, and a flat line at "now" is the truth on frame one
+            if self.cpu_hist.iter().all(|v| *v == 0.0) {
+                let v = self.stats.cpu as f32;
+                self.cpu_hist = vec![v; 60];
+            }
+            if self.ram_hist.iter().all(|v| *v == 0.0) {
+                let v = self.stats.ram as f32;
+                self.ram_hist = vec![v; 60];
+            }
             self.cpu_hist.push(self.stats.cpu as f32);
             self.ram_hist.push(self.stats.ram as f32);
             if self.cpu_hist.len() > 80 {
@@ -1009,7 +1019,7 @@ impl App {
             ui.add_space(1.0);
         }
         // ── bottom: sound, engine state ──
-        let need = 214.0;
+        let need = 270.0;
         let space = ui.available_height() - need;
         if space > 0.0 {
             ui.add_space(space);

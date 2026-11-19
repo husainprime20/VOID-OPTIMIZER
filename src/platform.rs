@@ -1605,9 +1605,42 @@ pub fn disk() -> Option<(f64, f64, f64)> {
     ))
 }
 
+/// Same reading from the POSIX side, so the Linux build is not a dead card.
 #[cfg(not(windows))]
 pub fn disk() -> Option<(f64, f64, f64)> {
-    None
+    #[repr(C)]
+    struct StatVfs {
+        bsize: u64,
+        frsize: u64,
+        blocks: u64,
+        bfree: u64,
+        bavail: u64,
+        files: u64,
+        ffree: u64,
+        favail: u64,
+        fsid: u64,
+        flag: u64,
+        namemax: u64,
+        spare: [u64; 6],
+    }
+    extern "C" {
+        fn statvfs(path: *const std::ffi::c_char, buf: *mut StatVfs) -> i32;
+    }
+    let root = b"/\0";
+    let mut v: StatVfs = unsafe { std::mem::zeroed() };
+    let rc = unsafe { statvfs(root.as_ptr() as *const std::ffi::c_char, &mut v) };
+    if rc != 0 || v.frsize == 0 || v.blocks == 0 {
+        return None;
+    }
+    let total = v.blocks as f64 * v.frsize as f64;
+    let free = v.bfree as f64 * v.frsize as f64;
+    let used = (total - free).max(0.0);
+    let gb = 1024.0 * 1024.0 * 1024.0;
+    Some((
+        (used / total * 100.0).clamp(0.0, 100.0),
+        used / gb,
+        total / gb,
+    ))
 }
 
 /// `MIB_IFROW` from `ipifcons.h`, byte for byte. The table hands us these rows

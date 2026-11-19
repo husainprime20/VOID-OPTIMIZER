@@ -192,7 +192,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.add(egui::Label::new(
-                        RichText::new(format!("{:.0}", coverage)).font(num_font(64.0)).color(txt()),
+                        RichText::new(format!("{:.0}", coverage)).font(num_font(54.0)).color(txt()),
                     ));
                     ui.add(egui::Label::new(
                         RichText::new("%").font(num_font(24.0)).color(faint()),
@@ -267,7 +267,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 });
             });
             ui.add_space(12.0);
-            theme::ring_sweep(ui, coverage, 168.0, "readiness", app.sweep);
+            theme::ring_sweep(ui, coverage, 150.0, "readiness", app.sweep);
         });
     });
 
@@ -292,6 +292,13 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
         "volume · unavailable".to_string()
     };
     let net_max = if net_peak < 8.0 { 8.0 } else { net_peak * 1.25 };
+    // The chart is a shape, not an axis: it scales to the busiest sample with a
+    // floor, so a quiet machine still draws a readable line. The number above it
+    // is always the true percentage.
+    let cpu_peak = app.cpu_hist.iter().cloned().fold(0.0_f32, f32::max);
+    let ram_peak = app.ram_hist.iter().cloned().fold(0.0_f32, f32::max);
+    let cpu_max = (cpu_peak * 1.45).max(6.0);
+    let ram_max = (ram_peak * 1.45).max(6.0);
 
     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
         ui.spacing_mut().item_spacing.x = gap;
@@ -306,7 +313,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 "%",
                 theme::hue_cpu(),
                 &app.cpu_hist,
-                100.0,
+                cpu_max,
                 "average",
                 format!("{:.0}%", cpu_avg),
                 card_h,
@@ -346,7 +353,7 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
                 "%",
                 theme::hue_mem(),
                 &app.ram_hist,
-                100.0,
+                ram_max,
                 "average",
                 format!("{:.0}%", ram_avg),
                 card_h,
@@ -395,12 +402,29 @@ pub fn dashboard(app: &mut App, ui: &mut Ui) {
     }
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.horizontal(|ui| {
-            theme::micro(ui, "top processes");
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                theme::micro(ui, "cpu    memory");
-            });
-        });
+        let (hrect, _) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::hover());
+        ui.painter().text(
+            Pos2::new(hrect.left(), hrect.center().y),
+            Align2::LEFT_CENTER,
+            tracked("top processes"),
+            micro_font(),
+            faint(),
+        );
+        ui.painter().text(
+            Pos2::new(hrect.right() - 118.0, hrect.center().y),
+            Align2::RIGHT_CENTER,
+            tracked("cpu"),
+            micro_font(),
+            ghost(),
+        );
+        ui.painter().text(
+            Pos2::new(hrect.right(), hrect.center().y),
+            Align2::RIGHT_CENTER,
+            tracked("memory"),
+            micro_font(),
+            ghost(),
+        );
         ui.add_space(8.0);
         if rows.is_empty() {
             ui.add(egui::Label::new(
