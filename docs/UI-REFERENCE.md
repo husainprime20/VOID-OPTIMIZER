@@ -73,6 +73,29 @@ backdrop-filter: blur(18px) saturate(1.3);
 | **Log** | Timestamp (mono, grey) + message; each line slides in from +22 px; `ok/warn/err/dim` tint the *message only*. |
 | **Title bar** | Frameless strip: glass mark tile, name with an occasional specular shine sweep, then glass icon buttons (close turns rose and rotates its X on hover). |
 
+## 4b. Instruments (0.9.0)
+
+Dashboards in this house are *telemetry decks*, not forms: a grouped rail on the left, a
+breadcrumb header over a grid of instruments, and a table under them.
+
+- **Action bar, one row.** Coverage reading + the primary press + machine identity, in a single
+  glass row at the top. It never grows into a hero: the instruments are the page.
+- **Instrument card.** Vector glyph badge (26 px, tinted 30 alpha, 70 alpha ring) · name ·
+  sub-caption · the reading right-aligned in Plex Light with a mono unit · the chart · a floor
+  line carrying `average` on the left and the value on the right. Height 194 px, radius 14.
+- **One hue per instrument, and only there.** CPU `#ff5c5c` · memory `#568dff` · disk
+  `#a87aff` · network `#3edb84`; Porcelain uses the deeper variant of each. Hue names the
+  resource, never decorates anything else — the rest of the page stays monochrome.
+- **The chart is real.** Catmull-Rom through the samples at 4× density, filled with a mesh so
+  the alpha fades to zero at the floor, three widening glow strokes, a 1.5 px core stroke and a
+  bright head at *now*. It scales to the busiest sample (floor 6 %) — the number above it is
+  always the true reading.
+- **The rail is a console.** Stroke-drawn glyph per destination, a `MAIN` group label, the
+  active row a pill with a side bar and a chevron, and the account chip at the foot: avatar,
+  user, role, gear. No numbered list, no icon-free rows.
+- **The table is the floor.** `top processes` with aligned `cpu` / `memory` column captions,
+  monogram tiles, and a hairline between rows.
+
 ## 5. Layout
 
 - Frameless window with a custom 44 px title bar; the app fills the window and rounds with
