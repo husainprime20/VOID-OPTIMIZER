@@ -473,6 +473,15 @@ fn bcd_field(text: &str, key: &str) -> Option<String> {
     None
 }
 
+/// Diagnostic: did the registry read find a value at all? `none` means the key
+/// is missing (or the read failed), which must not be mistaken for "off".
+pub fn reg_probe(path: &str, name: &str) -> String {
+    match platform::reg_read_u32(path, name) {
+        Some(v) => v.to_string(),
+        None => "none".to_string(),
+    }
+}
+
 fn hvci_on() -> bool {
     if !platform::is_windows() {
         return true;
@@ -494,6 +503,11 @@ fn hvci_on() -> bool {
 /// Read-only, cheap, and safe to call every few seconds.
 pub fn boot_checks() -> Vec<BootCheck> {
     let mut out: Vec<BootCheck> = Vec::new();
+    // Nothing here exists off Windows, and an empty list keeps the page honest
+    // on a platform where the question does not apply.
+    if !platform::is_windows() {
+        return out;
+    }
     let emu = emulator_installed();
     match bcd_enum().as_deref() {
         None => out.push(BootCheck {

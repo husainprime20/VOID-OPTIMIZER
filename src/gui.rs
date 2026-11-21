@@ -224,6 +224,22 @@ fn selftest(boot: std::time::Instant) -> i32 {
             .join(","),
     );
     line("boot_ok", engine::boot_ok().to_string());
+    // Prove the DeviceGuard keys are readable rather than silently absent: a
+    // "bad" hvci row is only meaningful if the read found a value at all.
+    line(
+        "deviceguard",
+        format!(
+            "vbs={} hvci={}",
+            engine::reg_probe(
+                r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard",
+                "EnableVirtualizationBasedSecurity"
+            ),
+            engine::reg_probe(
+                r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
+                "Enabled"
+            )
+        ),
+    );
     line("ok", ok.to_string());
 
     let _ = std::fs::write("void-selftest.txt", report);
