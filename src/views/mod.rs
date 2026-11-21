@@ -1336,7 +1336,7 @@ pub fn discord_card(app: &mut App, ui: &mut Ui) {
                 ui.add_space(8.0);
                 ui.add(egui::Label::new(
                     RichText::new(
-                        "VOID opens Discord's own consent dialog, then exchanges the code straight to discord.com with your app secret. Nothing is sent anywhere else and no secret ships in the binary.",
+                        "Presence only: this shows your tag and score in the Discord client. The code is exchanged straight to discord.com with the secret you paste, kept on this machine. Access — the gate that decides whether the catalog runs at all — never touches it; that is the card above, and it holds no secret.",
                     )
                     .font(micro_font())
                     .color(ghost()),

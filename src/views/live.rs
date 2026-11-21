@@ -44,7 +44,11 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
             ));
         }
 
-        for (name, installed, running, path) in rows {
+        // Installed emulators get a row each; the rest collapse into one line. The
+        // safety card below is the point of this page — it should not sit under a
+        // screenful of "not found".
+        let (found, missing): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| r.1);
+        for (name, installed, running, path) in found {
             ui.horizontal(|ui| {
                 let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
                 let col = if running {
@@ -83,6 +87,23 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                 });
             });
             ui.add_space(4.0);
+        }
+
+        if !missing.is_empty() {
+            ui.add_space(2.0);
+            ui.add(egui::Label::new(
+                RichText::new(format!(
+                    "{} not installed · {}",
+                    missing.len(),
+                    missing
+                        .iter()
+                        .map(|r| r.0.as_str())
+                        .collect::<Vec<&str>>()
+                        .join(" · ")
+                ))
+                .font(micro_font())
+                .color(faint()),
+            ));
         }
 
         ui.add_space(8.0);
