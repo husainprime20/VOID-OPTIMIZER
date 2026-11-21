@@ -152,7 +152,7 @@ fn selftest(boot: std::time::Instant) -> i32 {
     // has tested.
     // Boot-level state: read-only here. CI reports what the runner looks like
     // rather than failing — a hypervisor-off runner is a fact, not a defect.
-    let boot = engine::boot_checks();
+    let boot_state = engine::boot_checks();
     let (auth_lines, auth_ok) = crate::auth::selftest();
     if !auth_ok {
         ok = false;
@@ -217,7 +217,8 @@ fn selftest(boot: std::time::Instant) -> i32 {
     );
     line(
         "boot",
-        boot.iter()
+        boot_state
+            .iter()
             .map(|c| format!("{}={}", c.id, if c.ok { "ok" } else { "bad" }))
             .collect::<Vec<String>>()
             .join(","),
