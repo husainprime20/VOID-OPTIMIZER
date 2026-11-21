@@ -982,6 +982,11 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                     app.state.auto_switch,
                     "arms a title's set when it launches".into(),
                 ));
+                rows.push((
+                    "Emulator guard",
+                    app.state.emu_guard,
+                    "refuses hypervisor edits and booting guests".into(),
+                ));
                 for (label, on, hint) in rows {
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1001,6 +1006,9 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
                                     }
                                     "Auto-loadout" => {
                                         app.state.auto_switch = !app.state.auto_switch
+                                    }
+                                    "Emulator guard" => {
+                                        app.state.emu_guard = !app.state.emu_guard
                                     }
                                     _ => app.state.auto_backup = !app.state.auto_backup,
                                 }

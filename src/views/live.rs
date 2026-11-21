@@ -95,6 +95,79 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
         ));
     });
 
+    // ── emulator safety: what VOID will and will not touch ──────────────────
+    theme::card(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.horizontal(|ui| {
+            theme::micro(ui, "emulator safety");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if theme::chip_button(ui, "repair", false).clicked() {
+                    app.run_action(ui.ctx(), Action::RepairEmulator);
+                }
+                theme::pill(
+                    ui,
+                    if app.state.emu_guard {
+                        "guard on"
+                    } else {
+                        "guard off"
+                    },
+                    app.state.emu_guard,
+                );
+            });
+        });
+        ui.add_space(10.0);
+        let guarded = if app.state.emu_guard {
+            "memory-integrity and hypervisor toggles are refused"
+        } else {
+            "hypervisor toggles are ALLOWED - an instance can stop booting"
+        };
+        for (k, v) in [
+            (
+                "touches",
+                "the player window only - VM service, ADB bridge and hypervisor hosts are never touched".to_string(),
+            ),
+            (
+                "booting",
+                "a guest younger than 90 s is left alone, whatever you press".to_string(),
+            ),
+            ("guard", guarded.to_string()),
+            (
+                "repair",
+                "restores Normal priority, every core, and no forced GPU".to_string(),
+            ),
+        ] {
+            theme::kv_row(ui, k, &v, false);
+        }
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            let mut g = app.state.emu_guard;
+            if theme::toggle(ui, &mut g).changed() {
+                app.state
+                    .set_setting("emu_guard", if g { "1" } else { "0" });
+                app.toast(
+                    if g { 0 } else { 1 },
+                    if g {
+                        "emulator guard on"
+                    } else {
+                        "emulator guard off - hypervisor tweaks allowed"
+                    },
+                );
+            }
+            ui.add_space(8.0);
+            ui.add(egui::Label::new(
+                RichText::new("Emulator guard")
+                    .font(label_font())
+                    .color(txt()),
+            ));
+            ui.add_space(6.0);
+            ui.add(egui::Label::new(
+                RichText::new("refuses the changes that brick instances")
+                    .font(micro_font())
+                    .color(ghost()),
+            ));
+        });
+    });
+
     ui.add_space(14.0);
 
     ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
@@ -105,17 +178,58 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
             ui.set_width(half);
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
-                theme::micro(ui, "dial-in");
+                theme::micro(ui, "detected");
                 ui.add_space(8.0);
-                for (k, v) in [
-                    ("graphics", "smooth · 60 fps cap"),
-                    ("instance", "1 core per instance pin"),
-                    ("resolution", "1280×720 @ 240 dpi"),
-                    ("process", "high priority, above normal"),
-                    ("network", "wifi jammer off, nagle off"),
-                    ("input", "raw mouse, accel off"),
-                ] {
-                    theme::kv_row(ui, k, v, false);
+                let found = app
+                    .emulators
+                    .iter()
+                    .find(|e| e.installed)
+                    .map(|e| e.name.to_string())
+                    .unwrap_or_else(|| "none installed".to_string());
+                let running = app.emulators.iter().filter(|e| e.running).count();
+                let player = app
+                    .emulators
+                    .iter()
+                    .find(|e| e.running)
+                    .map(|e| e.path.clone())
+                    .unwrap_or_default();
+                let rows = [
+                    ("emulator", found),
+                    ("instances", format!("{} running", running)),
+                    (
+                        "player",
+                        if player.is_empty() {
+                            "-".to_string()
+                        } else {
+                            theme::clip(&player, 34)
+                        },
+                    ),
+                    (
+                        "cores",
+                        format!(
+                            "{} logical · pin uses physical",
+                            crate::platform::logical_cpus()
+                        ),
+                    ),
+                    (
+                        "guard",
+                        if app.state.emu_guard {
+                            "on".to_string()
+                        } else {
+                            "off".to_string()
+                        },
+                    ),
+                    (
+                        "hypervisor",
+                        if crate::platform::is_windows() {
+                            "read, never changed".to_string()
+                        } else {
+                            "n/a".to_string()
+                        },
+                    ),
+                ];
+                for (k, v) in rows {
+                    theme::kv_row(ui, k, &v, false);
                 }
             });
         });
@@ -540,6 +654,9 @@ pub fn aim(app: &mut App, ui: &mut Ui) {
             });
         });
     });
+
+    ui.add_space(14.0);
+
 
     ui.add_space(14.0);
 

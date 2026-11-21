@@ -139,6 +139,9 @@ pub enum Action {
     Theme(u8),
     /// Write a diagnostics report next to the settings.
     ExportReport,
+    /// Put an emulator back the way Windows had it: normal priority, every core,
+    /// no forced GPU preference.
+    RepairEmulator,
     /// Open the Discord consent dialog.
     LinkDiscord,
     /// Apply the matches of the whole pre-flight checklist.
@@ -468,6 +471,22 @@ impl App {
                 Ok(m) => self.toast(0, m),
                 Err(e) => self.toast(2, e),
             },
+            Action::RepairEmulator => {
+                let mut msg = Vec::new();
+                let mut ok = true;
+                for (aok, m) in [
+                    engine::run_named("ff_priority_reset"),
+                    engine::run_named("ff_affinity_reset"),
+                    engine::run_named("ff_gpu_pref_reset"),
+                ] {
+                    ok = ok && aok;
+                    msg.push(m);
+                }
+                self.toast(
+                    if ok { 0 } else { 1 },
+                    format!("emulator repair · {}", msg.join("  ·  ")),
+                );
+            }
             Action::BoostPid(pid) => match engine::boost_pid(pid) {
                 Ok(m) => self.toast(0, format!("priority raised · {}", m)),
                 Err(e) => self.toast(2, format!("boost failed · {}", e)),

@@ -79,6 +79,26 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
+### What's new in 0.9.5 — Emulator Safe
+
+An emulator is not a game process. Treating it like one is how instances stop booting.
+
+* **The player window only.** Priority and affinity now target `HD-Player`, `dnplayer`,
+  `MuMuPlayer`… and nothing else. `BstkSVC`, the ADB bridge and hypervisor hosts are never
+  touched — that was the old `bluestacks*` prefix match, and it is gone.
+* **A boot guard.** A guest younger than 90 s is skipped, with a message saying so. Rearranging
+  the scheduler under a VM that is still initialising is the documented way to hang it.
+* **Reversible at last.** `ff.priority` and `ff.affinity` used to have an empty revert list;
+  they now carry `ff_priority_reset` / `ff_affinity_reset`, and there is a **Repair** button
+  that puts an emulator back to Normal priority, all cores, no forced GPU.
+* **Memory integrity is blocked, not just warned about.** `kernel.vbs` flips the hypervisor at
+  the next boot, which can leave an instance that was created against the old one unbootable.
+  With an emulator installed, the emulator guard refuses it (Settings → *Emulator guard*).
+* **Temp purge refuses while a guest is alive** — BlueStacks keeps live state under `%TEMP%`.
+* **No more invented numbers.** The Free Fire page's "dial-in" card listed values VOID never
+  set; it now reports what was actually detected. The self-test also fails if any tweak can be
+  applied that cannot be reverted (two one-way actions excepted, by name).
+
 ### What's new in 0.9.0 — Instruments
 
 The deck was rebuilt around telemetry, in the language of the reference console:

@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.9.4";
+pub const VERSION: &str = "0.9.5";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -81,6 +81,11 @@ pub struct State {
     pub bands: bool,
     /// Draw the pointer as a white dot with a lagging ring.
     pub soft_cursor: bool,
+    /// Refuse the changes that are known to break an Android emulator
+    /// (hypervisor / memory-integrity toggles), and never touch a guest that is
+    /// still booting. On by default; it is the difference between a tune and a
+    /// bricked instance.
+    pub emu_guard: bool,
 }
 
 pub struct Outcome {
@@ -102,8 +107,10 @@ fn journal_path() -> std::path::PathBuf {
 }
 
 impl State {
-    pub fn new() -> State {
-        let mut s = State {
+    /// Every default, with no disk reads and no journal write — used by tools that
+    /// only need the engine's policy (the repair button, the self-test).
+    fn bare() -> State {
+        State {
             applied: BTreeSet::new(),
             log: Vec::new(),
             volume: 34,
@@ -120,9 +127,14 @@ impl State {
             rain: true,
             bands: true,
             soft_cursor: true,
+            emu_guard: true,
             auto_switch: false,
             secret: String::new(),
-        };
+        }
+    }
+
+    pub fn new() -> State {
+        let mut s = State::bare();
         s.load();
         s.push(
             "sys",
@@ -177,6 +189,7 @@ impl State {
                     "rain" => self.rain = truthy(v),
                     "bands" => self.bands = truthy(v),
                     "soft_cursor" => self.soft_cursor = truthy(v),
+                    "emu_guard" => self.emu_guard = truthy(v),
                     "auto_switch" => self.auto_switch = truthy(v),
                     "secret" => self.secret = v.to_string(),
                     "applied" => {
@@ -194,7 +207,7 @@ impl State {
 
     pub fn save(&self) {
         let body = format!(
-            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nbands={}\nsoft_cursor={}\nauto_switch={}\nsecret={}\napplied={}\n",
+            "volume={}\nintensity={}\nmuted={}\nmotion={}\nauto_backup={}\nlast_profile={}\ntheme={}\npresence={}\nguard={}\nrain={}\nbands={}\nsoft_cursor={}\nemu_guard={}\nauto_switch={}\nsecret={}\napplied={}\n",
             self.volume,
             self.intensity,
             if self.muted { 1 } else { 0 },
@@ -207,6 +220,7 @@ impl State {
             if self.rain { 1 } else { 0 },
             if self.bands { 1 } else { 0 },
             if self.soft_cursor { 1 } else { 0 },
+            if self.emu_guard { 1 } else { 0 },
             if self.auto_switch { 1 } else { 0 },
             self.secret,
             self.applied.iter().cloned().collect::<Vec<String>>().join(",")
@@ -236,6 +250,7 @@ impl State {
             "rain" => self.rain = truthy(value),
             "bands" => self.bands = truthy(value),
             "soft_cursor" => self.soft_cursor = truthy(value),
+            "emu_guard" => self.emu_guard = truthy(value),
             "auto_switch" => self.auto_switch = truthy(value),
             "secret" => self.secret = value.to_string(),
             "muted" => self.muted = truthy(value),
@@ -355,6 +370,66 @@ const FF_PROC: &[&str] = &[
     "gameloop",
 ];
 
+/// The player *window* processes VOID may touch. Service, ADB, frontend and
+/// hypervisor hosts are deliberately absent: pinning `BstkSVC`/`HD-Adb`/a VM
+/// host while BlueStacks is running is how an instance hangs and then refuses to
+/// boot again. Pinning these is the whole point; touching the plumbing is not.
+const FF_PLAYER: &[&str] = &[
+    "hd-player",
+    "dnplayer",
+    "mumuplayer",
+    "nemuplayer",
+    "memu",
+    "nox",
+    "gameloop",
+    "ldvboxheadless",
+];
+
+/// A guest that has been alive for less than this is still booting Android; the
+/// scheduler must not be rearranged under it.
+const EMU_SETTLE_SECS: f64 = 90.0;
+
+/// Player processes that are old enough to touch, plus a note for each one that
+/// was skipped because it was still booting.
+fn player_pids() -> (Vec<(u32, String)>, Vec<String>) {
+    let mut take: Vec<(u32, String)> = Vec::new();
+    let mut skip: Vec<String> = Vec::new();
+    for (name, pid, _) in platform::processes() {
+        let lower = name.to_ascii_lowercase();
+        let bare = lower.trim_end_matches(".exe").to_string();
+        if !FF_PLAYER.iter().any(|p| bare == *p) {
+            continue;
+        }
+        match platform::proc_age_secs(pid) {
+            Some(age) if age < EMU_SETTLE_SECS => {
+                skip.push(format!("{} ({}s old)", bare, age as u64));
+            }
+            _ => take.push((pid, bare)),
+        }
+    }
+    (take, skip)
+}
+
+/// Core mask covering physical cores only, never fewer than four logical CPUs.
+fn physical_mask() -> Option<usize> {
+    let cpus = platform::logical_cpus().min(std::mem::size_of::<usize>() * 8);
+    if cpus < 4 {
+        return None;
+    }
+    let mut mask: usize = 0;
+    let mut i = 0;
+    while i < cpus {
+        mask |= 1usize << i;
+        i += 2;
+    }
+    Some(mask)
+}
+
+/// Is an Android emulator installed here? Returns its display name.
+pub fn emulator_installed() -> Option<&'static str> {
+    EMULATORS.iter().find(|s| emu_path(s).is_some()).map(|s| s.name)
+}
+
 // ───────────────────────────── specials ─────────────────────────────
 
 /// PIDs of every process whose image name matches an Android emulator.
@@ -374,6 +449,14 @@ fn emulator_pids() -> Vec<u32> {
 fn clean_temp() -> (bool, String) {
     if simulated() {
         return (true, "simulated :: temp purge".to_string());
+    }
+    // BlueStacks and friends keep live guest state under %TEMP% while they run.
+    // Deleting underneath them is a documented way to lose an instance.
+    if !emulator_pids().is_empty() {
+        return (
+            false,
+            "an emulator is running — close it before clearing temp".to_string(),
+        );
     }
     let mut roots: Vec<std::path::PathBuf> = Vec::new();
     for key in ["TEMP", "TMP"] {
@@ -450,53 +533,126 @@ fn run_special(state: &mut State, name: &str, revert: bool) -> (bool, String) {
         "net_congestion_default" => net_congestion(state, true),
         "clean_temp" => clean_temp(),
         "ff_priority" => {
-            let pids = emulator_pids();
+            let (pids, skipped) = player_pids();
             if pids.is_empty() {
-                (false, "no emulator is running".to_string())
-            } else {
-                let mut ok = 0;
-                let mut last = String::new();
-                for pid in pids.iter() {
-                    match platform::set_priority(*pid, "High") {
-                        Ok(m) => {
-                            ok += 1;
-                            last = m;
-                        }
-                        Err(e) => last = e,
-                    }
-                }
-                (
-                    ok > 0,
-                    format!("{} process(es) set to HIGH  ·  {}", ok, last),
-                )
-            }
-        }
-        "ff_affinity" => {
-            let pids = emulator_pids();
-            if pids.is_empty() {
-                return (false, "no emulator is running".to_string());
-            }
-            let cpus = platform::logical_cpus().min(32);
-            let mut mask: usize = 0;
-            let mut i = 0;
-            while i < cpus {
-                mask |= 1usize << i;
-                i += 2;
+                return (
+                    false,
+                    if skipped.is_empty() {
+                        "no emulator window is running".to_string()
+                    } else {
+                        format!(
+                            "waiting for the guest to settle  ·  {}",
+                            skipped.join(", ")
+                        )
+                    },
+                );
             }
             let mut ok = 0;
             let mut last = String::new();
-            for pid in pids.iter() {
-                match platform::set_affinity(*pid, mask) {
-                    Ok(_) => {
+            for (pid, name) in pids.iter() {
+                match platform::set_priority(*pid, "High") {
+                    Ok(m) => {
                         ok += 1;
-                        last = format!("mask {:#x}", mask);
+                        last = format!("{} {}", name, m);
                     }
                     Err(e) => last = e,
                 }
             }
+            let note = if skipped.is_empty() {
+                String::new()
+            } else {
+                format!("  ·  skipped {}", skipped.join(", "))
+            };
             (
                 ok > 0,
-                format!("{} core(s) pinned  ·  {}  ·  {}", ok, last, if ok > 0 { "" } else { "failed" }),
+                format!("{} window(s) at HIGH  ·  {}{}", ok, last, note),
+            )
+        }
+        "ff_priority_reset" => {
+            let mut ok = 0;
+            for (name, pid, _) in platform::processes().iter() {
+                let lower = name.to_ascii_lowercase();
+                let bare = lower.trim_end_matches(".exe").to_string();
+                if FF_PLAYER.iter().any(|p| bare == *p)
+                    || FF_PROC.iter().any(|p| bare.starts_with(p))
+                {
+                    if platform::set_priority(*pid, "Normal").is_ok() {
+                        ok += 1;
+                    }
+                }
+            }
+            (ok > 0, format!("{} process(es) back to NORMAL", ok))
+        }
+        "ff_affinity" => {
+            let Some(mask) = physical_mask() else {
+                return (
+                    false,
+                    "fewer than four logical CPUs — pinning would starve the guest".to_string(),
+                );
+            };
+            let (pids, skipped) = player_pids();
+            if pids.is_empty() {
+                return (
+                    false,
+                    if skipped.is_empty() {
+                        "no emulator window is running".to_string()
+                    } else {
+                        format!(
+                            "waiting for the guest to settle  ·  {}",
+                            skipped.join(", ")
+                        )
+                    },
+                );
+            }
+            let mut ok = 0;
+            let mut last = String::new();
+            for (pid, name) in pids.iter() {
+                match platform::set_affinity(*pid, mask) {
+                    Ok(_) => {
+                        ok += 1;
+                        last = format!("{} mask {:#x}", name, mask);
+                    }
+                    Err(e) => last = e,
+                }
+            }
+            let note = if skipped.is_empty() {
+                String::new()
+            } else {
+                format!("  ·  skipped {}", skipped.join(", "))
+            };
+            (
+                ok > 0,
+                format!("{} window(s) pinned  ·  {}{}", ok, last, note),
+            )
+        }
+        "ff_affinity_reset" => {
+            let cpus = platform::logical_cpus().min(std::mem::size_of::<usize>() * 8);
+            let full: usize = if cpus >= std::mem::size_of::<usize>() * 8 {
+                usize::MAX
+            } else {
+                (1usize << cpus) - 1
+            };
+            let mut ok = 0;
+            for (name, pid, _) in platform::processes().iter() {
+                let lower = name.to_ascii_lowercase();
+                let bare = lower.trim_end_matches(".exe").to_string();
+                if FF_PLAYER.iter().any(|p| bare == *p)
+                    || FF_PROC.iter().any(|p| bare.starts_with(p))
+                {
+                    if platform::set_affinity(*pid, full).is_ok() {
+                        ok += 1;
+                    }
+                }
+            }
+            (ok > 0, format!("{} process(es) back on all {} cores", ok, cpus))
+        }
+        "ff_repair" => {
+            let (a, ma) = run_special(state, "ff_priority_reset", false);
+            let (b, mb) = run_special(state, "ff_affinity_reset", false);
+            let (c, mc) = run_special(state, "ff_gpu_pref_reset", false);
+            (
+                a || b || c,
+                format!("priority: {}  ·  cores: {}  ·  gpu: {}", ma, mb, mc),
             )
         }
         "ff_boost" => {
@@ -741,6 +897,22 @@ fn execute(state: &mut State, action: &Action, revert: bool) -> (bool, String) {
 // ───────────────────────────── apply / revert ─────────────────────────────
 
 fn apply_one(state: &mut State, t: &'static catalog::Tweak, revert: bool) -> Outcome {
+    // The emulator guard. Turning memory integrity off flips the hypervisor the
+    // next time Windows boots — and an Android instance that was created against
+    // the old hypervisor can come back unable to start. That is not a risk worth
+    // taking silently on a machine that has an emulator installed.
+    if !revert && state.emu_guard && t.id == "kernel.vbs" {
+        if let Some(name) = emulator_installed() {
+            return Outcome {
+                id: t.id.to_string(),
+                ok: false,
+                msg: format!(
+                    "blocked · {} is installed and this flips the hypervisor. Settings → Emulator guard overrides it.",
+                    name
+                ),
+            };
+        }
+    }
     if !revert && state.auto_backup && t.risk == 2 && platform::is_windows() {
         if let Err(e) = platform::create_restore_point("VOID auto checkpoint") {
             state.push("err", &format!("auto checkpoint :: {}", e));
@@ -1390,19 +1562,43 @@ pub fn emulators() -> Vec<Emulator> {
 
 /// Raise the priority of whichever emulator is currently running.
 pub fn boost_emulator() -> Result<String, String> {
-    let procs = platform::processes();
-    for spec in EMULATORS.iter() {
-        let needle = spec.exe.to_lowercase();
-        if let Some((_, pid, _)) = procs
-            .iter()
-            .find(|(p, _, _)| p.to_lowercase() == needle || p.to_lowercase().starts_with(&needle))
-        {
-            platform::set_priority(*pid, "High")
-                .map_err(|e| format!("{} · {}", spec.name, e))?;
-            return Ok(format!("{} boosted · pid {}", spec.name, pid));
+    let (pids, skipped) = player_pids();
+    if pids.is_empty() {
+        return Err(if skipped.is_empty() {
+            "no emulator window is running".to_string()
+        } else {
+            format!(
+                "the guest is still booting ({}). Let it settle, then boost.",
+                skipped.join(", ")
+            )
+        });
+    }
+    let mut ok = 0;
+    let mut err = String::new();
+    for (pid, _) in pids.iter() {
+        match platform::set_priority(*pid, "High") {
+            Ok(_) => ok += 1,
+            Err(e) => err = e,
         }
     }
-    Err("no emulator is running".to_string())
+    if ok == 0 {
+        return Err(format!("nothing changed · {}", err));
+    }
+    Ok(format!(
+        "{} window(s) at HIGH{} · never the VM service, never a booting guest",
+        ok,
+        if skipped.is_empty() {
+            String::new()
+        } else {
+            format!(" · skipped {}", skipped.join(", "))
+        }
+    ))
+}
+
+/// Run one of the named specials from outside the engine (the repair button).
+pub fn run_named(name: &str) -> (bool, String) {
+    let mut state = State::bare();
+    run_special(&mut state, name, false)
 }
 
 pub fn launch_emulator(path: &str) -> Result<String, String> {

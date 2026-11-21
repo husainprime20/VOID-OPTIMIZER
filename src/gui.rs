@@ -127,6 +127,24 @@ fn selftest(boot: std::time::Instant) -> i32 {
     if engine::catalog::PROFILES.len() < 5 {
         ok = false;
     }
+    // Every tweak that applies something must be able to take it back, except
+    // the two that are one-way by nature (a DNS flush and a temp purge leave
+    // nothing to restore). The emulator lane used to fail this: it raised
+    // priority and pinned cores with an empty revert list, so "revert
+    // everything" could not undo it.
+    const ONE_WAY: &[&str] = &["net.flush", "st.clean"];
+    let reversible = engine::catalog::TWEAKS
+        .iter()
+        .filter(|t| !t.apply.is_empty() && !t.revert.is_empty())
+        .count();
+    let one_way = engine::catalog::TWEAKS
+        .iter()
+        .filter(|t| !t.apply.is_empty() && t.revert.is_empty())
+        .map(|t| t.id)
+        .collect::<Vec<&str>>();
+    if one_way.iter().any(|id| !ONE_WAY.contains(id)) {
+        ok = false;
+    }
     let mut report = String::new();
     let mut line = |k: &str, v: String| {
         report.push_str(&format!("{}={}\n", k, v));
@@ -155,6 +173,20 @@ fn selftest(boot: std::time::Instant) -> i32 {
     line("power_plan", engine::power_plan());
     line("emulators_found", format!("{}", emus.iter().filter(|e| e.installed).count()));
     line("processes", format!("{}", procs.len()));
+    line(
+        "reversible",
+        format!(
+            "{}/{} ({})",
+            reversible,
+            engine::catalog::TWEAKS.len(),
+            one_way.join(",")
+        ),
+    );
+    line("emu_guard", state.emu_guard.to_string());
+    line(
+        "emulator_installed",
+        engine::emulator_installed().unwrap_or("none").to_string(),
+    );
     line("ok", ok.to_string());
 
     let _ = std::fs::write("void-selftest.txt", report);

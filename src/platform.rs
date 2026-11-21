@@ -816,6 +816,37 @@ mod win {
         out
     }
 
+    /// How long the process has been alive, in seconds. Used to keep VOID away
+    /// from an emulator that is still booting its guest.
+    pub fn proc_age(pid: u32) -> Option<f64> {
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle == 0 || handle == INVALID_HANDLE {
+                return None;
+            }
+            let mut created = super::FileTime::default();
+            let mut exited = super::FileTime::default();
+            let mut kernel = super::FileTime::default();
+            let mut user = super::FileTime::default();
+            let ok = super::kern::GetProcessTimes(
+                handle as *mut std::ffi::c_void,
+                &mut created,
+                &mut exited,
+                &mut kernel,
+                &mut user,
+            );
+            CloseHandle(handle);
+            if ok == 0 {
+                return None;
+            }
+            let ticks = ((created.high as u64) << 32) | created.low as u64;
+            let born = ticks as f64 / 10_000_000.0;
+            let now = super::epoch_secs() as f64 + 11_644_473_600.0;
+            Some((now - born).max(0.0))
+        }
+    }
+
     pub fn cpu_times() -> Vec<(String, u32, u64)> {
         const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
         let mut out: Vec<(String, u32, u64)> = Vec::new();
@@ -1322,6 +1353,27 @@ pub fn is_process_running(exe: &str) -> bool {
     processes()
         .iter()
         .any(|(name, _, _)| name.trim_end_matches(".exe").to_ascii_lowercase() == want)
+}
+
+/// Process age in seconds (creation time → now). `None` when the kernel will
+/// not say, in which case callers must treat the process as established.
+pub fn proc_age_secs(pid: u32) -> Option<f64> {
+    #[cfg(windows)]
+    {
+        win::proc_age(pid)
+    }
+    #[cfg(not(windows))]
+    {
+        let text = std::fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+        let close = text.rfind(')')?;
+        let rest: Vec<&str> = text.get(close + 1..)?.split_whitespace().collect();
+        // field 22 is starttime (clock ticks since boot); field 3 is the first
+        // token after `comm`, so 22 lands at index 19
+        let start = rest.get(19)?.parse::<f64>().ok()?;
+        let up = std::fs::read_to_string("/proc/uptime").ok()?;
+        let uptime = up.split_whitespace().next()?.parse::<f64>().ok()?;
+        Some((uptime - start / 100.0).max(0.0))
+    }
 }
 
 /// Raise a process' priority class natively (no PowerShell, no lag).
