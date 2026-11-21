@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.10.0";
+pub const VERSION: &str = "0.10.1";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -428,6 +428,255 @@ fn physical_mask() -> Option<usize> {
 /// Is an Android emulator installed here? Returns its display name.
 pub fn emulator_installed() -> Option<&'static str> {
     EMULATORS.iter().find(|s| emu_path(s).is_some()).map(|s| s.name)
+}
+
+// ── the boot environment an emulator needs back ─────────────────────────────
+//
+// A guest that will not boot is almost never the guest's fault. Three changes a
+// "latency" tweak makes survive a reboot and land squarely on the hypervisor:
+// `disabledynamictick`, `useplatformtick` and `tscsyncpolicy=enhanced` were all
+// written for bare metal, and `kernel.vbs` turns the hypervisor off entirely.
+// Everything else in the catalog dies with the process.
+
+#[derive(Clone)]
+pub struct BootCheck {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub detail: String,
+    /// Whether VOID can put this back without the user editing anything.
+    pub fix: bool,
+    pub ok: bool,
+}
+
+fn bcd_enum() -> Option<String> {
+    if !platform::is_windows() {
+        return None;
+    }
+    platform::run("bcdedit", &["/enum", "{current}"])
+        .ok()
+        .map(|o| o.stdout)
+}
+
+/// `bcdedit` prints `key<padding>value` — split on the first whitespace run.
+fn bcd_field(text: &str, key: &str) -> Option<String> {
+    for line in text.lines() {
+        let mut it = line.split_whitespace();
+        let Some(k) = it.next() else { continue };
+        if k.eq_ignore_ascii_case(key) {
+            let v: Vec<&str> = it.collect();
+            if v.is_empty() {
+                return None;
+            }
+            return Some(v.join(" "));
+        }
+    }
+    None
+}
+
+fn hvci_on() -> bool {
+    if !platform::is_windows() {
+        return true;
+    }
+    let vbs = platform::reg_read_u32(
+        r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard",
+        "EnableVirtualizationBasedSecurity",
+    )
+    .unwrap_or(0);
+    let hvci = platform::reg_read_u32(
+        r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
+        "Enabled",
+    )
+    .unwrap_or(0);
+    vbs == 1 || hvci == 1
+}
+
+/// Everything about this machine that could stop an emulator instance booting.
+/// Read-only, cheap, and safe to call every few seconds.
+pub fn boot_checks() -> Vec<BootCheck> {
+    let mut out: Vec<BootCheck> = Vec::new();
+    let emu = emulator_installed();
+    match bcd_enum().as_deref() {
+        None => out.push(BootCheck {
+            id: "bcd",
+            label: "boot config",
+            detail: if platform::is_windows() {
+                "bcdedit did not answer · run VOID as administrator to read it".to_string()
+            } else {
+                "not applicable on this platform".to_string()
+            },
+            fix: false,
+            ok: true,
+        }),
+        Some(text) => {
+            let yes = |v: Option<String>| {
+                v.map(|s| s.eq_ignore_ascii_case("yes")).unwrap_or(false)
+            };
+            let dt = bcd_field(text, "disabledynamictick");
+            let pt = bcd_field(text, "useplatformtick");
+            let tsc = bcd_field(text, "tscsyncpolicy");
+            let hv = bcd_field(text, "hypervisorlaunchtype");
+
+            let tick = yes(dt.clone()) || yes(pt.clone());
+            out.push(BootCheck {
+                id: "tick",
+                label: "kernel tick",
+                detail: if tick {
+                    format!(
+                        "locked to the platform clock{} — virtual machines are known to hang on this",
+                        if yes(dt) { " · dynamic tick disabled" } else { "" }
+                    )
+                } else {
+                    "Windows default".to_string()
+                },
+                fix: tick,
+                ok: !tick,
+            });
+
+            let enhanced = tsc
+                .as_deref()
+                .map(|v| v.eq_ignore_ascii_case("enhanced"))
+                .unwrap_or(false);
+            out.push(BootCheck {
+                id: "tsc",
+                label: "tsc sync",
+                detail: if enhanced {
+                    "forced enhanced — a guest can disagree with its host clock".to_string()
+                } else {
+                    "Windows default".to_string()
+                },
+                fix: enhanced,
+                ok: !enhanced,
+            });
+
+            let off = hv
+                .as_deref()
+                .map(|v| v.eq_ignore_ascii_case("off"))
+                .unwrap_or(false);
+            out.push(BootCheck {
+                id: "hypervisor",
+                label: "hypervisor",
+                detail: if off {
+                    "launch type off — an instance created under Hyper-V can fail to boot".to_string()
+                } else {
+                    format!("{}", hv.unwrap_or_else(|| "auto".to_string()))
+                },
+                fix: off,
+                ok: !off,
+            });
+        }
+    }
+
+    let hvci = hvci_on();
+    out.push(BootCheck {
+        id: "hvci",
+        label: "memory integrity",
+        detail: if hvci {
+            "on".to_string()
+        } else {
+            "off — the hypervisor it guards is what an instance was built against".to_string()
+        },
+        fix: !hvci,
+        ok: hvci,
+    });
+
+    if let Some(name) = emu {
+        let bad = out.iter().filter(|c| !c.ok).count();
+        out.push(BootCheck {
+            id: "verdict",
+            label: "verdict",
+            detail: if bad == 0 {
+                format!("{} is installed · the boot environment is clean", name)
+            } else {
+                format!(
+                    "{} is installed and {} boot setting{} would stop it — repair restores them",
+                    name,
+                    bad,
+                    if bad == 1 { "" } else { "s" }
+                )
+            },
+            fix: bad > 0,
+            ok: bad == 0,
+        });
+    }
+    out
+}
+
+pub fn boot_ok() -> bool {
+    boot_checks().iter().all(|c| c.ok)
+}
+
+fn outcome(id: &str, ok: bool, msg: impl Into<String>) -> Outcome {
+    Outcome {
+        id: id.to_string(),
+        ok,
+        msg: msg.into(),
+    }
+}
+
+/// Put the boot environment back to Windows defaults: the three BCD values the
+/// catalog can change, the hypervisor launch type, and memory integrity. Only
+/// the ones that are actually wrong are touched, so this is safe to press twice.
+pub fn boot_repair() -> Vec<Outcome> {
+    let mut out: Vec<Outcome> = Vec::new();
+    if !platform::is_windows() {
+        out.push(outcome("boot", false, "boot settings are Windows-only"));
+        return out;
+    }
+    for check in boot_checks() {
+        match check.id {
+            "tick" => {
+                for key in ["disabledynamictick", "useplatformtick"] {
+                    out.push(match platform::run("bcdedit", &["/set", key, "default"]) {
+                        Ok(o) if o.ok => outcome(key, true, format!("{} → default", key)),
+                        Ok(o) => outcome(key, false, format!("bcdedit refused · {}", o.stderr.trim())),
+                        Err(e) => outcome(key, false, e),
+                    });
+                }
+            }
+            "tsc" => out.push(match platform::run("bcdedit", &["/set", "tscsyncpolicy", "default"]) {
+                Ok(o) if o.ok => outcome("tscsyncpolicy", true, "tscsyncpolicy → default"),
+                Ok(o) => outcome("tscsyncpolicy", false, format!("bcdedit refused · {}", o.stderr.trim())),
+                Err(e) => outcome("tscsyncpolicy", false, e),
+            }),
+            "hypervisor" => out.push(
+                match platform::run("bcdedit", &["/set", "hypervisorlaunchtype", "auto"]) {
+                    Ok(o) if o.ok => outcome("hypervisorlaunchtype", true, "hypervisor → auto"),
+                    Ok(o) => outcome(
+                        "hypervisorlaunchtype",
+                        false,
+                        format!("bcdedit refused · {}", o.stderr.trim()),
+                    ),
+                    Err(e) => outcome("hypervisorlaunchtype", false, e),
+                },
+            ),
+            "hvci" => {
+                let a = platform::reg_write(
+                    r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard",
+                    "EnableVirtualizationBasedSecurity",
+                    platform::RegKind::Dword,
+                    "1",
+                );
+                let b = platform::reg_write(
+                    r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
+                    "Enabled",
+                    platform::RegKind::Dword,
+                    "1",
+                );
+                out.push(outcome(
+                    "hvci",
+                    a.is_ok() && b.is_ok(),
+                    "memory integrity → on (takes effect at the next restart)",
+                ));
+            }
+            _ => {}
+        }
+    }
+    out.push(outcome(
+        "reboot",
+        true,
+        "restart Windows once for the boot changes to take hold",
+    ));
+    out
 }
 
 // ───────────────────────────── specials ─────────────────────────────
@@ -901,14 +1150,19 @@ fn apply_one(state: &mut State, t: &'static catalog::Tweak, revert: bool) -> Out
     // next time Windows boots — and an Android instance that was created against
     // the old hypervisor can come back unable to start. That is not a risk worth
     // taking silently on a machine that has an emulator installed.
-    if !revert && state.emu_guard && t.id == "kernel.vbs" {
+    if !revert && state.emu_guard && matches!(t.id, "kernel.vbs" | "kernel.timer" | "kernel.tsc") {
         if let Some(name) = emulator_installed() {
+            let what = match t.id {
+                "kernel.vbs" => "flips the hypervisor",
+                "kernel.timer" => "locks the kernel tick to the platform clock, which hangs guests",
+                _ => "forces the enhanced TSC policy, which desyncs a guest from its host clock",
+            };
             return Outcome {
                 id: t.id.to_string(),
                 ok: false,
                 msg: format!(
-                    "blocked · {} is installed and this flips the hypervisor. Settings → Emulator guard overrides it.",
-                    name
+                    "blocked · {} is installed and this {}. Settings → Emulator guard overrides it.",
+                    name, what
                 ),
             };
         }

@@ -79,6 +79,23 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
+### What's new in 0.10.1 — Boot Doctor
+
+"Won't boot any more" is almost never the emulator's fault. It is one of four BCD
+values that outlive a restart.
+
+* **A boot check**, read live from `bcdedit` and the DeviceGuard keys: kernel tick,
+  TSC sync policy, hypervisor launch type, memory integrity — shown as rows on the
+  Free Fire page with the truth in them.
+* **Repair boot**, one press: the three BCD values, the hypervisor launch type and
+  memory integrity back to Windows defaults. Only the wrong ones are touched.
+* **The guard got wider**: `kernel.timer` and `kernel.tsc` are now refused while an
+  emulator is installed, not just `kernel.vbs`. All three were written for bare metal.
+* **The Free Fire profile no longer purges `%TEMP%`.** An emulator keeps live guest
+  state there, and that is a plausible way to break an instance that was working.
+* The contract — what is touched, what is refused, what survives, what VOID will not
+  claim — is written down in [`docs/EMULATOR.md`](docs/EMULATOR.md).
+
 ### What's new in 0.10.0 — Access
 
 A members' build, gated the only way a serverless app can gate honestly.

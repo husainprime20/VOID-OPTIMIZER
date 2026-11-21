@@ -159,6 +159,37 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
         ] {
             theme::kv_row(ui, k, &v, false);
         }
+
+        // Boot-level state: the only changes that survive a restart. This is
+        // what "it will not boot any more" actually looks like.
+        let boot: Vec<&engine::BootCheck> = app.boot.iter().filter(|c| c.id != "verdict").collect();
+        if !boot.is_empty() {
+            ui.add_space(4.0);
+            for c in boot {
+                let bad = !c.ok;
+                theme::kv_row(
+                    ui,
+                    c.label,
+                    &c.detail,
+                    bad,
+                );
+            }
+            if app.boot.iter().any(|c| !c.ok) {
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if theme::chip_button(ui, "repair boot", true).clicked() {
+                        app.run_action(ui.ctx(), Action::RepairBoot);
+                    }
+                    ui.add(egui::Label::new(
+                        RichText::new(
+                            "puts the BCD tick, TSC policy, hypervisor launch type and memory integrity back to Windows defaults",
+                        )
+                        .font(micro_font())
+                        .color(ghost()),
+                    ));
+                });
+            }
+        }
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             let mut g = app.state.emu_guard;

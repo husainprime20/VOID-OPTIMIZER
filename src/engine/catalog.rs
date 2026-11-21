@@ -1831,7 +1831,7 @@ pub static PROFILES: &[Profile] = &[
         id: "freefire",
         name: "Free Fire",
         tagline: "Emulator-tuned for Free Fire / FF Max.",
-        note: "Power, latency, emulator priority and physical-core pinning. Reboot the PC after the first run for Nagle to bite.",
+        note: "Power, latency, emulator priority and core pinning — and nothing that touches the boot environment. A temp purge is deliberately absent: an emulator keeps live guest state there.",
         tweaks: &[
             "power.ultimate",
             "power.parking",
@@ -1853,7 +1853,6 @@ pub static PROFILES: &[Profile] = &[
             "ff.network",
             "ff.priority",
             "ff.affinity",
-            "st.clean",
         ],
     },
     Profile {

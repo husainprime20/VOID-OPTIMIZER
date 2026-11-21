@@ -157,6 +157,9 @@ pub enum Action {
     /// Put an emulator back the way Windows had it: normal priority, every core,
     /// no forced GPU preference.
     RepairEmulator,
+    /// Undo the boot-level changes a tweak can leave behind: dynamic tick, the
+    /// platform clock, TSC policy, hypervisor launch type, memory integrity.
+    RepairBoot,
     /// Open the Discord consent dialog.
     LinkDiscord,
     /// Apply the matches of the whole pre-flight checklist.
@@ -221,6 +224,9 @@ pub struct App {
     pub bench: Option<engine::BenchResult>,
     pub bench_prev: Option<engine::BenchResult>,
     pub emulators: Vec<engine::Emulator>,
+    /// Boot-level state that can keep an emulator from starting (BCD tick, TSC,
+    /// hypervisor launch type, memory integrity), refreshed with the checklist.
+    pub boot: Vec<engine::BootCheck>,
     pub procs: Vec<(String, u32, f64)>,
     pub games: Vec<(&'static str, &'static str)>,
     pub games_at: f64,
@@ -380,6 +386,7 @@ impl App {
             bench: None,
             bench_prev: None,
             emulators: Vec::new(),
+            boot: Vec::new(),
             procs: Vec::new(),
             games: Vec::new(),
             games_at: -20.0,
@@ -530,6 +537,25 @@ impl App {
                     if ok { 0 } else { 1 },
                     format!("emulator repair · {}", msg.join("  ·  ")),
                 );
+            }
+            Action::RepairBoot => {
+                let results = engine::boot_repair();
+                let ok = results.iter().all(|r| r.ok);
+                let n = results.iter().filter(|r| r.ok).count();
+                self.toast(
+                    if ok { 0 } else { 2 },
+                    format!(
+                        "boot repair · {}/{} restored · {}",
+                        n,
+                        results.len(),
+                        results
+                            .iter()
+                            .find(|r| !r.ok)
+                            .map(|r| r.msg.clone())
+                            .unwrap_or_else(|| "restart once to finish".to_string())
+                    ),
+                );
+                self.boot = engine::boot_checks();
             }
             Action::BoostPid(pid) => match engine::boost_pid(pid) {
                 Ok(m) => self.toast(0, format!("priority raised · {}", m)),
@@ -879,10 +905,12 @@ impl App {
     // ── pre-flight ──────────────────────────────────────────────────────────
 
     fn checks_tick(&mut self, now: f64) {
+        // boot state spawns bcdedit, so it rides the 4 s checklist refresh
         if now - self.checks_at < 4.0 && !self.checks.is_empty() {
             return;
         }
         self.checks_at = now;
+        self.boot = engine::boot_checks();
         let (applied, verified) = self.tally();
         let jitter = self.bench.as_ref().map(|b| b.jitter);
         let rows: Vec<&engine::PingRow> = self.ping.iter().filter(|r| r.ok).collect();

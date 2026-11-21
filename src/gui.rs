@@ -150,6 +150,9 @@ fn selftest(boot: std::time::Instant) -> i32 {
     // policy matrix and the callback parser. None of it needs a Discord account,
     // which is the point — a gate that only fails at runtime is a gate nobody
     // has tested.
+    // Boot-level state: read-only here. CI reports what the runner looks like
+    // rather than failing — a hypervisor-off runner is a fact, not a defect.
+    let boot = engine::boot_checks();
     let (auth_lines, auth_ok) = crate::auth::selftest();
     if !auth_ok {
         ok = false;
@@ -212,6 +215,14 @@ fn selftest(boot: std::time::Instant) -> i32 {
         }
         .to_string(),
     );
+    line(
+        "boot",
+        boot.iter()
+            .map(|c| format!("{}={}", c.id, if c.ok { "ok" } else { "bad" }))
+            .collect::<Vec<String>>()
+            .join(","),
+    );
+    line("boot_ok", engine::boot_ok().to_string());
     line("ok", ok.to_string());
 
     let _ = std::fs::write("void-selftest.txt", report);
