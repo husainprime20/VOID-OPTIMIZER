@@ -1496,6 +1496,129 @@ pub fn open_url(url: &str) {
     }
 }
 
+// ── OS-sealed secrets ───────────────────────────────────────────────────────
+//
+// The refresh token and the saved identity never touch the disk in the clear:
+// `seal` puts them under DPAPI, which ties the blob to *this* Windows account on
+// *this* machine. Copying `auth.token` to another PC yields nothing. On a
+// platform with no keystore the two functions return `None`, and the auth module
+// treats that as "cannot persist" rather than falling back to plaintext.
+
+#[cfg(windows)]
+#[repr(C)]
+struct Blob {
+    cb: u32,
+    pb: *mut u8,
+}
+
+#[cfg(windows)]
+fn blob_for(data: &[u8]) -> Blob {
+    Blob {
+        cb: data.len() as u32,
+        pb: data.as_ptr() as *mut u8,
+    }
+}
+
+#[cfg(windows)]
+pub fn seal(data: &[u8]) -> Option<Vec<u8>> {
+    use std::ffi::c_void;
+    #[link(name = "crypt32")]
+    extern "system" {
+        fn CryptProtectData(
+            p_in: *const Blob,
+            desc: *const u16,
+            entropy: *const Blob,
+            reserved: *mut c_void,
+            prompt: *mut c_void,
+            flags: u32,
+            p_out: *mut Blob,
+        ) -> i32;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LocalFree(p: *mut c_void) -> *mut c_void;
+    }
+    unsafe {
+        let input = blob_for(data);
+        let mut out = Blob {
+            cb: 0,
+            pb: std::ptr::null_mut(),
+        };
+        // CRYPTPROTECT_UI_FORBIDDEN
+        let ok = CryptProtectData(
+            &input,
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0x1,
+            &mut out,
+        );
+        if ok == 0 || out.pb.is_null() {
+            return None;
+        }
+        let copy = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
+        LocalFree(out.pb as *mut c_void);
+        Some(copy)
+    }
+}
+
+#[cfg(windows)]
+pub fn unseal(blob: &[u8]) -> Option<Vec<u8>> {
+    use std::ffi::c_void;
+    #[link(name = "crypt32")]
+    extern "system" {
+        fn CryptUnprotectData(
+            p_in: *const Blob,
+            desc: *mut *mut u16,
+            entropy: *const Blob,
+            reserved: *mut c_void,
+            prompt: *mut c_void,
+            flags: u32,
+            p_out: *mut Blob,
+        ) -> i32;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LocalFree(p: *mut c_void) -> *mut c_void;
+    }
+    if blob.is_empty() {
+        return None;
+    }
+    unsafe {
+        let input = blob_for(blob);
+        let mut out = Blob {
+            cb: 0,
+            pb: std::ptr::null_mut(),
+        };
+        let ok = CryptUnprotectData(
+            &input,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0x1,
+            &mut out,
+        );
+        if ok == 0 || out.pb.is_null() {
+            return None;
+        }
+        let copy = std::slice::from_raw_parts(out.pb, out.cb as usize).to_vec();
+        LocalFree(out.pb as *mut c_void);
+        Some(copy)
+    }
+}
+
+#[cfg(not(windows))]
+pub fn seal(_data: &[u8]) -> Option<Vec<u8>> {
+    None
+}
+
+#[cfg(not(windows))]
+pub fn unseal(_blob: &[u8]) -> Option<Vec<u8>> {
+    None
+}
+
 // ── instant telemetry (no process spawn, no PowerShell) ─────────────────────
 
 #[cfg(windows)]

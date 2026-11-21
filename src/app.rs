@@ -116,6 +116,21 @@ pub enum Auth {
     Failed(String),
 }
 
+/// Whether this session may change the machine.
+///
+/// Deliberately *not* the same thing as [`Auth`], which is the cosmetic Discord
+/// presence link: presence shows your score, the gate decides whether there is
+/// anything to show. A build with no `auth.json` ships `Gate::Open` — a normal
+/// build — and the console companion never closes the gate at all.
+pub enum Gate {
+    Open,
+    Locked {
+        why: String,
+        busy: bool,
+    },
+    Allowed(crate::auth::Session),
+}
+
 /// The Discord application id, re-exported for the settings card.
 pub const RPC_CLIENT_ID: &str = crate::rpc::CLIENT_ID;
 
@@ -261,6 +276,9 @@ pub struct App {
     /// Discord account link.
     pub auth: Auth,
     pub auth_rx: Option<std::sync::mpsc::Receiver<Result<engine::Account, String>>>,
+    /// Access gate (Discord role check). `Open` unless a policy is shipped.
+    pub gate: Gate,
+    gate_rx: Option<std::sync::mpsc::Receiver<Result<crate::auth::Session, String>>>,
     /// The client secret while it is being typed, before it is saved.
     pub secret_draft: String,
     pub secret_editing: bool,
@@ -316,8 +334,34 @@ impl App {
             "settings" => View::Settings,
             _ => View::Dashboard,
         };
+        // The gate is decided once, before the first frame: if this build carries
+        // a policy, nothing behind the lock is even constructed.
+        let (gate, gate_rx) = {
+            let cfg = crate::auth::config();
+            if cfg.configured() {
+                crate::auth::set_gate(true);
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::Builder::new()
+                    .name("void-gate".into())
+                    .spawn(move || {
+                        let _ = tx.send(crate::auth::revalidate(crate::auth::config()));
+                    })
+                    .ok();
+                (
+                    Gate::Locked {
+                        why: "checking your sign-in".to_string(),
+                        busy: true,
+                    },
+                    Some(rx),
+                )
+            } else {
+                (Gate::Open, None)
+            }
+        };
         Self {
             view,
+            gate,
+            gate_rx,
             state,
             machine,
             stats,
@@ -642,6 +686,94 @@ impl App {
         self.auth = Auth::Idle;
         self.auth_rx = None;
         self.toast(1, "discord account unlinked");
+    }
+
+    // ── access gate ─────────────────────────────────────────────────────────
+    pub fn gate_locked(&self) -> bool {
+        matches!(self.gate, Gate::Locked { .. })
+    }
+
+    pub fn gate_busy(&self) -> bool {
+        matches!(self.gate, Gate::Locked { busy: true, .. })
+    }
+
+    /// Open the browser and wait for the loopback callback on a worker thread.
+    pub fn begin_sign_in(&mut self) {
+        let cfg = crate::auth::config();
+        if !cfg.configured() {
+            return;
+        }
+        if self.gate_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("void-signin".into())
+            .spawn(move || {
+                let _ = tx.send(crate::auth::sign_in(crate::auth::config()));
+            })
+            .ok();
+        self.gate_rx = Some(rx);
+        self.gate = Gate::Locked {
+            why: "waiting for your browser".to_string(),
+            busy: true,
+        };
+    }
+
+    /// Re-read membership without a browser round trip: refresh, identify, role
+    /// check. Still on a worker thread — the window never blocks on Discord.
+    pub fn begin_revalidate(&mut self) {
+        if self.gate_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("void-revalidate".into())
+            .spawn(move || {
+                let _ = tx.send(crate::auth::revalidate(crate::auth::config()));
+            })
+            .ok();
+        self.gate_rx = Some(rx);
+    }
+
+    /// Sign-out clears the identity, the sealed refresh token and the gate.
+    pub fn sign_out(&mut self) {
+        crate::auth::clear();
+        self.gate = Gate::Locked {
+            why: "signed out".to_string(),
+            busy: false,
+        };
+        self.toast(0, "signed out · access sealed");
+    }
+
+    fn gate_tick(&mut self, ctx: &egui::Context) {
+        let mut done: Option<Result<crate::auth::Session, String>> = None;
+        if let Some(rx) = self.gate_rx.as_ref() {
+            match rx.try_recv() {
+                Ok(v) => done = Some(v),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    done = Some(Err("the sign-in worker stopped".to_string()));
+                }
+            }
+        }
+        if let Some(v) = done {
+            self.gate_rx = None;
+            self.gate = match v {
+                Ok(session) => {
+                    self.toast(1, format!("access granted · {}", session.tier));
+                    Gate::Allowed(session)
+                }
+                Err(why) => {
+                    crate::auth::set_gate(true);
+                    Gate::Locked { why, busy: false }
+                }
+            };
+        }
+        if self.gate_locked() {
+            // keep the status line live while a sign-in is in flight
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
     }
 
     fn auth_tick(&mut self) {
@@ -1968,6 +2100,16 @@ impl eframe::App for App {
         }
         self.poll(ctx, now);
         self.pump_job(ctx);
+
+        // One screen for a gated build: no rail, no deck, no palette — there is
+        // nothing behind the lock worth clicking.
+        self.gate_tick(ctx);
+        if self.gate_locked() {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none().fill(theme::bg()))
+                .show(ctx, |ui| crate::views::gate(self, ui));
+            return;
+        }
 
         // ── keyboard ──
         let (mod_key, k_press, esc, enter, num) = ctx.input(|i| {

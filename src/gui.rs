@@ -14,6 +14,7 @@
 
 mod app;
 mod audio;
+mod auth;
 mod engine;
 mod json;
 mod platform;
@@ -145,6 +146,14 @@ fn selftest(boot: std::time::Instant) -> i32 {
     if one_way.iter().any(|id| !ONE_WAY.contains(id)) {
         ok = false;
     }
+    // The auth flow is checked offline: SHA-256, the RFC 7636 PKCE vector, the
+    // policy matrix and the callback parser. None of it needs a Discord account,
+    // which is the point — a gate that only fails at runtime is a gate nobody
+    // has tested.
+    let (auth_lines, auth_ok) = crate::auth::selftest();
+    if !auth_ok {
+        ok = false;
+    }
     let mut report = String::new();
     let mut line = |k: &str, v: String| {
         report.push_str(&format!("{}={}\n", k, v));
@@ -186,6 +195,22 @@ fn selftest(boot: std::time::Instant) -> i32 {
     line(
         "emulator_installed",
         engine::emulator_installed().unwrap_or("none").to_string(),
+    );
+    for (k, v) in auth_lines {
+        line(&k, v);
+    }
+    line(
+        "gate",
+        if crate::auth::gate_open() { "open" } else { "closed" }.to_string(),
+    );
+    line(
+        "policy",
+        if crate::auth::config().configured() {
+            "configured"
+        } else {
+            "none"
+        }
+        .to_string(),
     );
     line("ok", ok.to_string());
 

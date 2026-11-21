@@ -1,0 +1,17 @@
+{
+  "discord": {
+    "client_id": "PUT-YOUR-PUBLIC-CLIENT-ID-HERE",
+    "redirect_port": 43713,
+    "guild_id": "PUT-YOUR-SERVER-ID-HERE",
+    "required_tier": "user",
+    "note": "VOID members",
+    "invite_url": "https://discord.gg/your-invite",
+    "roles": {
+      "111111111111111111": { "tier": "owner", "label": "Owner" },
+      "222222222222222222": { "tier": "dev", "label": "Developer" },
+      "333333333333333333": { "tier": "premium", "label": "Premium" },
+      "444444444444444444": { "tier": "user", "label": "Member" }
+    },
+    "allow_users": ["555555555555555555"]
+  }
+}

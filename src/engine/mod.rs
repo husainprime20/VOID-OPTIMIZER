@@ -15,7 +15,7 @@ use std::thread;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-pub const VERSION: &str = "0.9.5";
+pub const VERSION: &str = "0.10.0";
 
 // ───────────────────────────── machine ─────────────────────────────
 
@@ -939,6 +939,18 @@ fn apply_one(state: &mut State, t: &'static catalog::Tweak, revert: bool) -> Out
 }
 
 pub fn apply_ids(state: &mut State, ids: &[String]) -> Vec<Outcome> {
+    // The gate lives here, not in the window: every caller — a view, a profile,
+    // match mode, an auto-switch — arrives through this function.
+    if !crate::auth::gate_open() {
+        return ids
+            .iter()
+            .map(|id| Outcome {
+                id: id.clone(),
+                ok: false,
+                msg: "locked · sign in with Discord to apply".to_string(),
+            })
+            .collect();
+    }
     let mut out: Vec<Outcome> = Vec::new();
     for id in ids.iter() {
         match find_tweak(id) {

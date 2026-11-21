@@ -79,6 +79,30 @@ documented way back.
 | **08 Aim Lab** | eDPI + cm/360° calculator, per-game sensitivity equivalents, warm-up ladder |
 | **09 Settings** | sound, motion, safety rails, live engine report (CPU, GPU, admin, timer, power plan) |
 
+### What's new in 0.10.0 — Access
+
+A members' build, gated the only way a serverless app can gate honestly.
+
+* **Discord OAuth2 + PKCE**, public client, no secret anywhere in the binary. 32 random
+  bytes from `BCryptGenRandom`, S256 challenge, one-time `state` compared before the code
+  is spent.
+* **A loopback callback** on `127.0.0.1:43713`, one request, then the port closes. The page
+  it serves is in the house style.
+* **A live role check**, `guilds.members.read`, at sign-in *and* at every launch. 403/404 is
+  a closed door. A cached tier is a label, never proof.
+* **The engine holds the gate**, not the window: `apply_ids` refuses while the gate is shut,
+  so profiles, palettes, match mode and auto-switch all stop in one place. `void-cli` stays
+  open on purpose — it is the way out when a gate misbehaves.
+* **DPAPI-sealed session** (identity and refresh token stored separately), and sign-out
+  deletes both and closes the gate.
+* **Fail closed everywhere**, including "roles could not be read".
+* **Tested offline**: SHA-256 against the FIPS vector, PKCE against RFC 7636's, plus the
+  policy matrix (no roles ⇒ closed, wrong role ⇒ closed, role ⇒ open, allowlist does not
+  bypass a role gate) and the callback parser. `--selftest` prints all of it.
+* Ship an `auth.json` (`auth.example.json` is the template) to turn any of it on. Without
+  one, VOID behaves exactly as before. Design notes and the threat model:
+  [`docs/AUTH.md`](docs/AUTH.md).
+
 ### What's new in 0.9.5 — Emulator Safe
 
 An emulator is not a game process. Treating it like one is how instances stop booting.

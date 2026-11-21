@@ -12,6 +12,7 @@
 //! `void-cli bench`            → sleep-jitter benchmark
 //! `void-cli app`              → launch VOID.exe
 
+mod auth;
 mod engine;
 mod json;
 mod platform;

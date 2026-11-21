@@ -4,7 +4,7 @@ pub mod catalog_views;
 pub mod live;
 
 use eframe::egui::{
-    self, Align, Align2, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2,
+    self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2,
 };
 
 use crate::app::{Action, App, Modal, View};
@@ -930,6 +930,65 @@ pub fn settings(app: &mut App, ui: &mut Ui) {
 
             theme::card(ui, |ui| {
                 ui.set_width(ui.available_width());
+                theme::micro(ui, "access");
+                ui.add_space(10.0);
+                let cfg = crate::auth::config();
+                ui.horizontal(|ui| {
+                    let (line, colour) = match &app.gate {
+                        crate::app::Gate::Allowed(s) => (
+                            format!("{} · {}", s.name, s.tier),
+                            theme::txt(),
+                        ),
+                        crate::app::Gate::Locked { why, .. } => {
+                            (format!("locked · {}", theme::clip(why, 44)), theme::dim())
+                        }
+                        crate::app::Gate::Open => (
+                            "no policy in this build · the catalog is ungated".to_string(),
+                            theme::faint(),
+                        ),
+                    };
+                    let (dot, _) = ui.allocate_exact_size(Vec2::new(8.0, 8.0), Sense::hover());
+                    if matches!(app.gate, crate::app::Gate::Allowed(_)) {
+                        ui.painter().circle_filled(dot.center(), 3.0, white());
+                    } else {
+                        ui.painter()
+                            .circle_stroke(dot.center(), 3.0, Stroke::new(1.0_f32, faint()));
+                    }
+                    ui.add(egui::Label::new(
+                        RichText::new(line).font(label_font()).color(colour),
+                    ));
+                });
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if cfg.configured() {
+                        if matches!(app.gate, crate::app::Gate::Allowed(_)) {
+                            if theme::chip_button(ui, "sign out", false).clicked() {
+                                app.sign_out();
+                            }
+                        } else if theme::chip_button(ui, "sign in", false).clicked() {
+                            app.begin_sign_in();
+                        }
+                    }
+                    if cfg.configured() && theme::chip_button(ui, "verify now", false).clicked() {
+                        app.begin_revalidate();
+                    }
+                });
+                ui.add_space(8.0);
+                ui.add(egui::Label::new(
+                    RichText::new(if cfg.configured() {
+                        "Membership is read from Discord on every launch and on demand here. The role check is the only thing that opens the gate."
+                    } else {
+                        "Ship an auth.json beside the exe to turn on the Discord role gate. Without one, VOID behaves like a normal build."
+                    })
+                    .font(micro_font())
+                    .color(ghost()),
+                ));
+            });
+
+            ui.add_space(14.0);
+
+            theme::card(ui, |ui| {
+                ui.set_width(ui.available_width());
                 theme::micro(ui, "behaviour");
                 ui.add_space(10.0);
                 // theme
@@ -1285,4 +1344,121 @@ pub fn discord_card(app: &mut App, ui: &mut Ui) {
             }
         }
     });
+}
+
+// ── access gate ──────────────────────────────────────────────────────────────
+
+/// The one screen a gated build shows. It has to be honest: what the check is,
+/// where it runs, and what it can and cannot protect against.
+pub fn gate(app: &mut App, ui: &mut Ui) {
+    let cfg = crate::auth::config();
+    let h = ui.available_height();
+    ui.allocate_ui_with_layout(
+        Vec2::new(ui.available_width(), h),
+        Layout::top_down(Align::Center),
+        |ui| {
+            ui.add_space((h * 0.5 - 230.0).max(36.0));
+            ui.allocate_ui_with_layout(
+                Vec2::new(452.0, 0.0),
+                Layout::top_down(Align::Min),
+                |ui| {
+                    ui.set_width(452.0);
+                    theme::card(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.horizontal(|ui| {
+                            theme::micro(ui, "access");
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                theme::pill(
+                                    ui,
+                                    if app.gate_busy() { "checking" } else { "locked" },
+                                    app.gate_busy(),
+                                );
+                            });
+                        });
+                        ui.add_space(12.0);
+                        ui.add(egui::Label::new(
+                            RichText::new("VOID is a members' build")
+                                .font(FontId::proportional(26.0))
+                                .color(txt()),
+                        ));
+                        ui.add_space(8.0);
+                        ui.add(egui::Label::new(
+                            RichText::new(
+                                "This copy asks Discord who you are before it touches the machine. \
+                                 Membership is read live — a role removed in the server closes this \
+                                 screen the next time VOID starts.",
+                            )
+                            .font(FontId::proportional(13.5))
+                            .color(ghost()),
+                        ));
+                        ui.add_space(16.0);
+                        let server = if cfg.note.trim().is_empty() {
+                            cfg.guild_id.clone()
+                        } else {
+                            cfg.note.clone()
+                        };
+                        theme::kv_row(
+                            ui,
+                            "server",
+                            if server.trim().is_empty() { "not named" } else { &server },
+                            false,
+                        );
+                        theme::kv_row(ui, "method", "discord oauth2 · pkce s256", false);
+                        theme::kv_row(ui, "check", "live role lookup on every launch", false);
+                        ui.add_space(14.0);
+
+                        if let crate::app::Gate::Locked { why, busy } = &app.gate {
+                            let bad = if theme::light() {
+                                Color32::from_rgb(170, 40, 40)
+                            } else {
+                                Color32::from_rgb(255, 92, 92)
+                            };
+                            ui.add(egui::Label::new(
+                                RichText::new(why.clone())
+                                    .font(FontId::proportional(13.0))
+                                    .color(if *busy { dim() } else { bad }),
+                            ));
+                            ui.add_space(10.0);
+                        }
+
+                        ui.horizontal(|ui| {
+                            let can = !app.gate_busy();
+                            let sign_in = theme::chip_button(ui, "sign in with discord", false);
+                            if sign_in.clicked() && can {
+                                app.begin_sign_in();
+                            }
+                            if !cfg.invite_url.trim().is_empty()
+                                && theme::chip_button(ui, "open the server", false).clicked()
+                            {
+                                crate::platform::open_url(&cfg.invite_url);
+                            }
+                            if theme::chip_button(ui, "quit", false).clicked() {
+                                ui.ctx()
+                                    .send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        });
+                        ui.add_space(12.0);
+                        ui.add(egui::Label::new(
+                            RichText::new(
+                                "no client secret is in this binary · the token never leaves your machine \
+                                 · sign-in can be revoked from Discord's authorised apps",
+                            )
+                            .font(micro_font())
+                            .color(faint()),
+                        ));
+                    });
+                    ui.add_space(12.0);
+                    ui.add(egui::Label::new(
+                        RichText::new(
+                            "A local check is advisory: it stops a shared build being used, not a \
+                             determined person on their own machine. void-cli stays open on purpose — \
+                             it is the way out when a gate misbehaves.",
+                        )
+                        .font(micro_font())
+                        .color(faint()),
+                    ));
+                },
+            );
+        },
+    );
 }
