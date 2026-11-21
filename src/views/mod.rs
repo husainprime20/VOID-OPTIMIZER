@@ -1202,7 +1202,7 @@ pub fn discord_card(app: &mut App, ui: &mut Ui) {
     theme::card(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
-            theme::micro(ui, "discord account");
+            theme::micro(ui, "discord presence");
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if theme::chip_button(ui, "reconnect", false).clicked() {
                     app.rpc.reconnect();

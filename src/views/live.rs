@@ -228,7 +228,7 @@ pub fn freefire(app: &mut App, ui: &mut Ui) {
                     (
                         "cores",
                         format!(
-                            "{} logical · pin uses physical",
+                            "{} logical · affinity keeps one of each pair",
                             crate::platform::logical_cpus()
                         ),
                     ),
