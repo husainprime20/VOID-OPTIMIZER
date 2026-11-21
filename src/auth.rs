@@ -993,7 +993,7 @@ pub fn selftest() -> (Vec<(String, String)>, bool) {
     line("sha256_abc", if sha_ok { "match".into() } else { hex });
 
     // RFC 7636 appendix B vector.
-    let verifier = "dBjftJeZ4RLt9nbnPn6U-2l6oIvS6a6RVE-pVLVpK1A";
+    let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     let challenge = b64url(&sha256(verifier.as_bytes()));
     let pkce_ok = challenge == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
     ok &= pkce_ok;
@@ -1056,7 +1056,7 @@ mod tests {
 
     #[test]
     fn pkce_matches_rfc7636() {
-        let v = "dBjftJeZ4RLt9nbnPn6U-2l6oIvS6a6RVE-pVLVpK1A";
+        let v = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         assert_eq!(b64url(&sha256(v.as_bytes())), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
     }
 
