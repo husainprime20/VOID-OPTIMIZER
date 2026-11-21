@@ -399,7 +399,7 @@ pub fn refresh(cfg: &Config, token: &str) -> Result<Tokens, String> {
     token_request(cfg, form)
 }
 
-fn api_get(access: &str, path: &str) -> Result<(u16, String), String> {
+fn api_get(access: &str, path: &str) -> Result<(u32, String), String> {
     crate::platform::https(
         "GET",
         API_HOST,
