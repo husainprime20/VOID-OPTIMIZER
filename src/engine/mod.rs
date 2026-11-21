@@ -482,21 +482,27 @@ pub fn reg_probe(path: &str, name: &str) -> String {
     }
 }
 
-fn hvci_on() -> bool {
+/// `Some(true)` on, `Some(false)` off, `None` when this Windows SKU does not
+/// report DeviceGuard at all. The distinction matters: a missing key is not a
+/// disabled feature, and reporting it as one would send people chasing a problem
+/// that does not exist — and hand them a repair button that writes keys their
+/// edition never had.
+fn hvci_state() -> Option<bool> {
     if !platform::is_windows() {
-        return true;
+        return None;
     }
     let vbs = platform::reg_read_u32(
         r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard",
         "EnableVirtualizationBasedSecurity",
-    )
-    .unwrap_or(0);
+    );
     let hvci = platform::reg_read_u32(
         r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
         "Enabled",
-    )
-    .unwrap_or(0);
-    vbs == 1 || hvci == 1
+    );
+    match (vbs, hvci) {
+        (None, None) => None,
+        (a, b) => Some(a == Some(1) || b == Some(1)),
+    }
 }
 
 /// Everything about this machine that could stop an emulator instance booting.
@@ -580,18 +586,26 @@ pub fn boot_checks() -> Vec<BootCheck> {
         }
     }
 
-    let hvci = hvci_on();
-    out.push(BootCheck {
-        id: "hvci",
-        label: "memory integrity",
-        detail: if hvci {
-            "on".to_string()
-        } else {
-            "off — the hypervisor it guards is what an instance was built against".to_string()
-        },
-        fix: !hvci,
-        ok: hvci,
-    });
+    match hvci_state() {
+        None => out.push(BootCheck {
+            id: "hvci",
+            label: "memory integrity",
+            detail: "not reported by this Windows edition".to_string(),
+            fix: false,
+            ok: true,
+        }),
+        Some(on) => out.push(BootCheck {
+            id: "hvci",
+            label: "memory integrity",
+            detail: if on {
+                "on".to_string()
+            } else {
+                "off — the hypervisor it guards is what an instance was built against".to_string()
+            },
+            fix: !on,
+            ok: on,
+        }),
+    }
 
     if let Some(name) = emu {
         let bad = out.iter().filter(|c| !c.ok).count();
@@ -637,6 +651,11 @@ pub fn boot_repair() -> Vec<Outcome> {
         return out;
     }
     for check in boot_checks() {
+        // Only the wrong ones: a clean machine gets a no-op, not a shower of
+        // bcdedit calls and registry writes it never needed.
+        if !check.fix {
+            continue;
+        }
         match check.id {
             "tick" => {
                 for key in ["disabledynamictick", "useplatformtick"] {
